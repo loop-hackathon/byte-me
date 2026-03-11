@@ -72,7 +72,7 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
     ports:
-      - "9090:9090"
+      - "9091:9090"
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -81,22 +81,63 @@ services:
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana-oss:latest
     container_name: cloudhelm-grafana
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
       GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
     ports:
-      - "3000:3000"
+      - "4000:3000"
     depends_on:
       - prometheus
     networks:
       - cloudhelm-network
     restart: unless-stopped
+
+  feature1-node-app:
+    build:
+      context: ./Feature 1/node_app
+    container_name: cloudhelm-feature1-node-app
+    ports:
+      - "3001:3000"
+    networks:
+      - cloudhelm-network
+    restart: unless-stopped
+
+  feature1-pyod-app:
+    build:
+      context: ./Feature 1/python_app
+    container_name: cloudhelm-feature1-pyod-app
+    ports:
+      - "8001:8001"
+    environment:
+      PROMETHEUS_URL: http://cloudhelm-prometheus:9090
+    depends_on:
+      - prometheus
+    networks:
+      - cloudhelm-network
+    restart: unless-stopped
+
+  feature1-provision-grafana:
+    build:
+      context: ./Feature 1/python_app
+    container_name: cloudhelm-feature1-provision-grafana
+    environment:
+      GRAFANA_URL: http://cloudhelm-grafana:3000
+    depends_on:
+      - grafana
+      - prometheus
+    networks:
+      - cloudhelm-network
+    command: >
+      sh -c "sleep 10 && python provision_grafana.py"
 
 volumes:
   postgres_data:

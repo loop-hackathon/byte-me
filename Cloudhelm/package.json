@@ -8,6 +8,8 @@
     "install-deps": "cd frontend && npm install"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.0.2"
+    "@neondatabase/serverless": "^1.0.2",
+    "jspdf": "^4.2.0",
+    "jspdf-autotable": "^5.0.7"
   }
 }

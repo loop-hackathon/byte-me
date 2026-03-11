@@ -5,6 +5,8 @@ import CostTimeSeriesChart from '../components/Cost/CostTimeSeriesChart';
 import CostAnomaliesTable from '../components/Cost/CostAnomaliesTable';
 import BudgetStatusTable from '../components/Cost/BudgetStatusTable';
 import type { CostSummaryResponse, CostAnomaly, BudgetStatus } from '../types/cost';
+import { generateSLAPDF } from '../lib/pdfExport';
+import { Download } from 'lucide-react';
 
 // ─── Types from the billing analysis response ───────────────────────────────
 
@@ -399,11 +401,33 @@ export default function CostDashboard() {
       <div className="max-w-7xl mx-auto">
 
         {/* Page Header */}
-        <div className="mb-7">
-          <h1 className="text-3xl font-extrabold text-white">💰 Cost &amp; Health Dashboard</h1>
-          <p className="text-slate-400 mt-1.5 text-sm">
-            Upload your AWS billing CSV — Gemini AI extracts cost trends, anomalies, and budget status instantly.
-          </p>
+        <div className="mb-7 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-extrabold text-white">💰 Cost &amp; Health Dashboard</h1>
+            <p className="text-slate-400 mt-1.5 text-sm">
+              Upload your AWS billing CSV — Gemini AI extracts cost trends, anomalies, and budget status instantly.
+            </p>
+          </div>
+          <button 
+            onClick={async () => {
+              try {
+                const [relData, healthData] = await Promise.all([
+                  api.getReliabilityMetrics(),
+                  api.getHealthSummary()
+                ]);
+                const systemStatus = healthData.some(s => s.status === 'critical' || s.status === 'warning') ? 'Degraded' : 
+                                     healthData.some(s => s.status === 'degraded') ? 'Partially Degraded' : 'Healthy';
+                generateSLAPDF(relData, healthData, systemStatus);
+              } catch (e) {
+                console.error("Error generating PDF:", e);
+                alert("Could not fetch SLA data from backend.");
+              }
+            }}
+            className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-500/30 text-cyan-400 hover:from-cyan-500/30 hover:to-purple-500/30 transition-all font-medium hover:shadow-[0_0_15px_rgba(34,211,238,0.2)]"
+          >
+            <Download size={18} />
+            Export SLA Report
+          </button>
         </div>
 
         {/* Upload Zone */}

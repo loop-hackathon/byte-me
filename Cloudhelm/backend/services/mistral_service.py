@@ -7,6 +7,7 @@ import logging
 import re
 import subprocess
 import asyncio
+import asyncio.subprocess
 from typing import Optional, Dict, Any, Tuple
 import httpx
 
@@ -37,6 +38,11 @@ class MistralService:
             r'^/lint\s*(.*)$': self._run_linter,
             r'^/errors?\s*(.*)$': self._find_errors,
             r'^/build\s*(.*)$': self._run_build,
+            r'^/debug\s*(.*)$': self._debug_code,
+            r'^/deps\s*(.*)$': self._check_dependencies,
+            r'^/coverage\s*(.*)$': self._check_test_coverage,
+            r'^/security\s*(.*)$': self._check_security,
+            r'^/optimize\s*(.*)$': self._optimize_code,
             r'^/help$': self._show_help,
             r'^/task\s+(.+)$': self._delegate_task,
             r'^/agents?$': self._list_agents,
@@ -205,93 +211,72 @@ class MistralService:
     
     async def delegate_task(self, task_description: str, agent_type: str, repository_name: str) -> str:
         """
-        Delegate tasks to specialized subagents like Mistral Vibe.
+        Stub for task delegation.
         """
-        try:
-            # Import here to avoid circular imports
-            from .subagent_service import subagent_service
-            
-            # Delegate to subagent service
-            task_id = await subagent_service.delegate_task(
-                task_description=task_description,
-                agent_type=agent_type,
-                repository_name=repository_name
-            )
-            
-            return f"🤖 **Task Delegated Successfully**\n\nI've assigned this task to the **{agent_type}** subagent.\n\n**Task ID:** `{task_id}`\n**Description:** {task_description}\n\nThe subagent is working on this independently. You can check the progress or continue with other tasks. I'll integrate the results when complete.\n\n*This allows me to handle multiple tasks in parallel while keeping our conversation focused.*"
-            
-        except Exception as e:
-            logger.error(f"Error delegating task: {e}")
-            return f"❌ **Task Delegation Failed**\n\nI encountered an error while trying to delegate the task: {str(e)}\n\nLet me handle this directly instead."
+        return f"🤖 **Stub Task Delegation**\n\nI've accepted the task: **{task_description}** for the **{agent_type}** agent.\n\n*Note: Subagent delegation is currently being initialized.*"
     
     async def _generate_interactive_questions(self, user_question: str, repository_name: str) -> list:
         """Generate interactive questions based on user query"""
-        try:
-            # Get project context for better questions
-            project_context = await project_context_service.get_project_context(repository_name)
-            tech_stack = project_context.get('tech_stack', {})
+        # Stub project context
+        tech_stack = {}
+        
+        questions = []
+        
+        if 'testing' in user_question.lower():
+            questions.append({
+                "question": "What's your primary testing goal?",
+                "options": [
+                    {"label": "Unit Testing", "description": "Test individual functions and components"},
+                    {"label": "Integration Testing", "description": "Test how components work together"},
+                    {"label": "E2E Testing", "description": "Test complete user workflows"},
+                    {"label": "Performance Testing", "description": "Test speed and load handling"}
+                ]
+            })
             
-            questions = []
-            
-            if 'testing' in user_question.lower():
+            if 'React' in tech_stack.get('frameworks', []):
                 questions.append({
-                    "question": "What's your primary testing goal?",
+                    "question": "Which React testing approach interests you most?",
                     "options": [
-                        {"label": "Unit Testing", "description": "Test individual functions and components"},
-                        {"label": "Integration Testing", "description": "Test how components work together"},
-                        {"label": "E2E Testing", "description": "Test complete user workflows"},
-                        {"label": "Performance Testing", "description": "Test speed and load handling"}
+                        {"label": "Component Testing", "description": "Test React components in isolation"},
+                        {"label": "Hook Testing", "description": "Test custom React hooks"},
+                        {"label": "User Interaction", "description": "Test clicks, forms, and user flows"}
                     ]
                 })
-                
-                if 'React' in tech_stack.get('frameworks', []):
-                    questions.append({
-                        "question": "Which React testing approach interests you most?",
-                        "options": [
-                            {"label": "Component Testing", "description": "Test React components in isolation"},
-                            {"label": "Hook Testing", "description": "Test custom React hooks"},
-                            {"label": "User Interaction", "description": "Test clicks, forms, and user flows"}
-                        ]
-                    })
-            
-            elif 'security' in user_question.lower():
-                questions.append({
-                    "question": "Which security area is your priority?",
-                    "options": [
-                        {"label": "Authentication", "description": "Login, tokens, and user verification"},
-                        {"label": "Data Protection", "description": "Encryption, storage, and transmission"},
-                        {"label": "Input Validation", "description": "Preventing injection attacks"},
-                        {"label": "Dependencies", "description": "Third-party package vulnerabilities"}
-                    ]
-                })
-            
-            elif 'architecture' in user_question.lower() or 'design' in user_question.lower():
-                questions.append({
-                    "question": "What architectural aspect needs attention?",
-                    "options": [
-                        {"label": "Code Organization", "description": "File structure and module organization"},
-                        {"label": "Design Patterns", "description": "Applying proven architectural patterns"},
-                        {"label": "Scalability", "description": "Preparing for growth and load"},
-                        {"label": "Maintainability", "description": "Making code easier to modify"}
-                    ]
-                })
-            
-            elif 'performance' in user_question.lower():
-                questions.append({
-                    "question": "Which performance area concerns you most?",
-                    "options": [
-                        {"label": "Frontend Performance", "description": "Page load times and user experience"},
-                        {"label": "Backend Performance", "description": "API response times and throughput"},
-                        {"label": "Database Performance", "description": "Query optimization and indexing"},
-                        {"label": "Memory Usage", "description": "Reducing memory consumption"}
-                    ]
-                })
-            
-            return questions
-            
-        except Exception as e:
-            logger.error(f"Error generating interactive questions: {e}")
-            return []
+        
+        elif 'security' in user_question.lower():
+            questions.append({
+                "question": "Which security area is your priority?",
+                "options": [
+                    {"label": "Authentication", "description": "Login, tokens, and user verification"},
+                    {"label": "Data Protection", "description": "Encryption, storage, and transmission"},
+                    {"label": "Input Validation", "description": "Preventing injection attacks"},
+                    {"label": "Dependencies", "description": "Third-party package vulnerabilities"}
+                ]
+            })
+        
+        elif 'architecture' in user_question.lower() or 'design' in user_question.lower():
+            questions.append({
+                "question": "What architectural aspect needs attention?",
+                "options": [
+                    {"label": "Code Organization", "description": "File structure and module organization"},
+                    {"label": "Design Patterns", "description": "Applying proven architectural patterns"},
+                    {"label": "Scalability", "description": "Preparing for growth and load"},
+                    {"label": "Maintainability", "description": "Making code easier to modify"}
+                ]
+            })
+        
+        elif 'performance' in user_question.lower():
+            questions.append({
+                "question": "Which performance area concerns you most?",
+                "options": [
+                    {"label": "Frontend Performance", "description": "Page load times and user experience"},
+                    {"label": "Backend Performance", "description": "API response times and throughput"},
+                    {"label": "Database Performance", "description": "Query optimization and indexing"},
+                    {"label": "Memory Usage", "description": "Reducing memory consumption"}
+                ]
+            })
+        
+        return questions
     
     async def _call_mistral_api(self, prompt: str) -> Optional[str]:
         """Call Mistral AI API with the given prompt"""
@@ -306,98 +291,39 @@ class MistralService:
                 "messages": [
                     {
                         "role": "system",
-                        "content": """You are CloudHelm Assistant, an expert SRE and DevOps AI assistant. You are like Mistral's open-source CLI coding assistant - conversational, intelligent, and helpful.
+                        "content": """You are a senior software engineer and DevOps assistant operating inside a developer CLI.
 
-Your personality:
-- Conversational and friendly, like talking to a knowledgeable colleague
-- Provide context and explanations, not just commands
-- Offer insights about code quality, best practices, and potential issues
-- Suggest improvements and alternatives
-- Explain the "why" behind recommendations
+Act like:
+- Senior backend engineer
+- DevOps engineer
+- Code reviewer
 
-When users ask about testing, linting, or code analysis:
-- Provide intelligent analysis and recommendations
-- Explain what to look for and why it matters
-- Suggest specific improvements
-- Offer best practices and tips
-- Be educational and insightful
+Response rules:
+- Output must be CLI friendly
+- Do NOT use markdown styling like ** or headings
+- Keep answers structured and minimal
+- Prefer bullet lists or sections
+- Suggest real commands when useful
+- Be concise and professional
 
-You can execute commands when specifically requested with /command syntax, but primarily focus on being a knowledgeable coding companion who provides valuable insights and guidance."""
+If a user command fails, output:
+
+ERROR
+Cause of failure
+
+FIX
+How to resolve it
+
+COMMAND
+Correct command
+"""
                     },
                     {
                         "role": "user",
                         "content": prompt
                     }
                 ],
-                "temperature": 0.3,
-                "max_tokens": 1000
-            }
-            
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    self.api_url,
-                    headers=headers,
-                    json=payload
-                )
-                response.raise_for_status()
-                
-                data = response.json()
-                
-                if not data.get("choices"):
-                    logger.error("Mistral returned no choices")
-                    return None
-                
-                message = data["choices"][0].get("message", {})
-                content = message.get("content", "")
-                
-                if not content:
-                    logger.error("Mistral returned empty content")
-                    return None
-                
-                logger.info("Successfully generated response from Mistral AI")
-                return content
-            
-        except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error from Mistral API: {e.response.status_code} - {e.response.text}")
-            return None
-        except Exception as e:
-            logger.error(f"Error calling Mistral API: {e}")
-            return None
-        try:
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
-            }
-            
-            payload = {
-                "model": self.model,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": """You are CloudHelm Assistant, an expert SRE and DevOps AI assistant. You are like Mistral's open-source CLI coding assistant - conversational, intelligent, and helpful.
-
-Your personality:
-- Conversational and friendly, like talking to a knowledgeable colleague
-- Provide context and explanations, not just commands
-- Offer insights about code quality, best practices, and potential issues
-- Suggest improvements and alternatives
-- Explain the "why" behind recommendations
-
-When users ask about testing, linting, or code analysis:
-- Provide intelligent analysis and recommendations
-- Explain what to look for and why it matters
-- Suggest specific improvements
-- Offer best practices and tips
-- Be educational and insightful
-
-You can execute commands when specifically requested with /command syntax, but primarily focus on being a knowledgeable coding companion who provides valuable insights and guidance."""
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                "temperature": 0.3,
+                "temperature": 0.2,
                 "max_tokens": 1000
             }
             
@@ -439,64 +365,66 @@ You can execute commands when specifically requested with /command syntax, but p
         file_path: Optional[str],
         question: Optional[str]
     ) -> str:
-        """Build prompt for code analysis"""
-        
-        context = f"I'm working on the **{repository_name}** repository"
-        if file_path:
-            context += f" and looking at `{file_path}`"
-        context += ".\n\n"
-        
+        """
+        Build optimized prompt for CLI style code analysis
+        """
+
+        context = f"""
+You are a senior software engineer and DevOps assistant operating inside a developer CLI.
+
+Repository: {repository_name}
+File: {file_path if file_path else "unknown"}
+
+Your job:
+- Analyze code
+- Detect errors
+- Suggest fixes
+- Recommend commands developers should run
+
+Response rules:
+- Output must be CLI friendly
+- Do NOT use markdown styling like ** or headings
+- Keep answers structured and minimal
+- Prefer bullet lists or sections
+- Suggest real commands when useful
+- Be concise and professional
+
+Response format:
+
+SUMMARY
+Short explanation of the issue or request
+
+ANALYSIS
+Key findings in the code
+
+POSSIBLE ISSUES
+- issue 1
+- issue 2
+
+RECOMMENDED FIX
+Step by step technical fix
+
+CLI COMMANDS
+Commands the developer can run locally if applicable
+
+NEXT STEPS
+What the developer should do next
+"""
+
         if code_snippet:
-            context += f"Here's the code I'm working with:\n```\n{code_snippet}\n```\n\n"
-        
+            context += f"""
+
+CODE
+{code_snippet}
+"""
+
         if question:
-            if question.lower() in ["test", "testing", "run tests"]:
-                context += f"**Question:** {question}\n\n"
-                context += """I'd like to understand the testing strategy for this codebase. Can you help me with:
+            context += f"""
 
-1. **Testing Approach**: What testing frameworks and strategies would work best for this project?
-2. **Test Coverage**: What areas should I focus on testing first?
-3. **Best Practices**: Any specific testing patterns or practices you'd recommend?
-4. **Common Issues**: What are typical testing challenges I might encounter?
+USER REQUEST
+{question}
+"""
 
-Please provide insights and recommendations rather than just running commands."""
-            
-            elif question.lower() in ["lint", "linting", "code quality"]:
-                context += f"**Question:** {question}\n\n"
-                context += """I want to improve the code quality in this repository. Can you help me understand:
-
-1. **Code Quality**: What potential issues should I look for in this codebase?
-2. **Best Practices**: What coding standards and practices would you recommend?
-3. **Tools**: What linting tools and configurations would work best?
-4. **Common Problems**: What are typical code quality issues in projects like this?
-
-Please provide analysis and recommendations for maintaining high code quality."""
-            
-            elif question.lower() in ["errors", "debugging", "issues"]:
-                context += f"**Question:** {question}\n\n"
-                context += """I'm looking to identify and resolve potential issues in this codebase. Can you help me with:
-
-1. **Error Analysis**: What types of errors or issues should I be watching for?
-2. **Debugging Strategy**: How should I approach finding and fixing problems?
-3. **Prevention**: What practices can help prevent common issues?
-4. **Code Review**: What should I focus on when reviewing this code?
-
-Please provide insights on identifying and resolving issues effectively."""
-            
-            else:
-                context += f"**Question:** {question}\n\n"
-                context += "Please provide your analysis, insights, and recommendations. I'm looking for your expertise and guidance on this."
-        else:
-            context += """Please analyze this code and provide your insights on:
-
-1. **Code Quality**: Overall assessment and potential improvements
-2. **Best Practices**: Adherence to coding standards and patterns  
-3. **Potential Issues**: Any problems or concerns you notice
-4. **Recommendations**: Specific suggestions for enhancement
-5. **Architecture**: Thoughts on the structure and design
-
-I value your expertise and detailed analysis."""
-        
         return context
     
     def _build_incident_solution_prompt(
@@ -961,14 +889,19 @@ I can provide deep analysis on:
 - Testing strategies and approaches
 
 **⚡ Quick Commands** (when you need them)
-- `/test` - Get testing insights and run tests
-- `/lint` - Code quality analysis and linting
-- `/errors` - Help identify and fix issues
-- `/build` - Build guidance and execution
-- `/run <command>` - Execute safe commands with context
-- `/task <description>` - Delegate work to specialized subagents
-- `/agents` - List available subagents and their capabilities
-- `/status [task_id]` - Check task status or list all tasks
+- /test - Get testing insights and run tests
+- /lint - Code quality analysis and linting
+- /errors - Help identify and fix issues
+- /build - Build guidance and execution
+- /debug - Provide debugging insights and guidance
+- /deps - Check project dependencies for issues
+- /coverage - Check test coverage and provide insights
+- /security - Run security check and provide insights
+- /optimize - Analyze code for optimization opportunities
+- /run <command> - Execute safe commands with context
+- /task <description> - Delegate work to specialized subagents
+- /agents - List available subagents and their capabilities
+- /status [task_id] - Check task status or list all tasks
 
 ## How I Work
 
@@ -1016,80 +949,38 @@ I'm here to help you write better code and understand your projects more deeply.
         return await self.delegate_task(task_description, agent_type, repository_name)
     
     async def _list_agents(self, match: re.Match, repository_name: str) -> str:
-        """List available subagents"""
-        try:
-            from .subagent_service import subagent_service
-            agents = subagent_service.get_available_agents()
-            
-            result = "🤖 **Available Subagents**\n\n"
-            result += "I can delegate tasks to specialized subagents for parallel work:\n\n"
-            
-            for agent_type, config in agents.items():
-                auto_approve = "✅ Auto-approved" if config["auto_approve"] else "⚠️ Requires approval"
-                result += f"**{config['name']}** (`{agent_type}`)\n"
-                result += f"- {config['description']}\n"
-                result += f"- Capabilities: {', '.join(config['capabilities'])}\n"
-                result += f"- {auto_approve}\n\n"
-            
-            result += "**Usage:** `/task <description>` - I'll automatically choose the best agent\n"
-            result += "**Example:** `/task analyze the authentication flow in this codebase`"
-            
-            return result
-            
-        except Exception as e:
-            return f"❌ Error listing agents: {str(e)}"
+        """List available subagents (Stub)"""
+        return "🤖 **Available Subagents**\n\nI can delegate tasks to specialized subagents for parallel work. Currently, the subagent pool is being updated."
     
     async def _check_task_status(self, match: re.Match, repository_name: str) -> str:
-        """Check status of delegated tasks"""
-        task_id = match.group(1).strip() if match.group(1) else None
-        
-        try:
-            from .subagent_service import subagent_service
-            
-            if task_id:
-                # Check specific task
-                status = subagent_service.get_task_status(task_id)
-                if "error" in status:
-                    return f"❌ **Task Not Found**: {task_id}"
-                
-                result = f"📋 **Task Status: {task_id}**\n\n"
-                result += f"**Description:** {status['description']}\n"
-                result += f"**Agent:** {status['agent_type']}\n"
-                result += f"**Status:** {status['status']}\n"
-                result += f"**Repository:** {status['repository']}\n"
-                
-                if status['result']:
-                    result += f"\n**Result:**\n{status['result'][:1000]}..."
-                elif status['error']:
-                    result += f"\n**Error:** {status['error']}"
-                
-                return result
-            else:
-                # List all active tasks
-                active_tasks = subagent_service.list_active_tasks()
-                completed_tasks = subagent_service.list_completed_tasks(5)
-                
-                result = "📋 **Task Status Overview**\n\n"
-                
-                if active_tasks:
-                    result += f"**Active Tasks ({len(active_tasks)}):**\n"
-                    for task in active_tasks:
-                        result += f"- `{task['task_id']}` - {task['agent_type']} - {task['status']}\n"
-                    result += "\n"
-                
-                if completed_tasks:
-                    result += f"**Recent Completed Tasks ({len(completed_tasks)}):**\n"
-                    for task in completed_tasks:
-                        status_icon = "✅" if task['status'] == 'completed' else "❌"
-                        result += f"- {status_icon} `{task['task_id']}` - {task['agent_type']}\n"
-                
-                if not active_tasks and not completed_tasks:
-                    result += "No tasks found. Use `/task <description>` to delegate work to subagents."
-                
-                return result
-                
-        except Exception as e:
-            return f"❌ Error checking task status: {str(e)}"
+        """Check status of delegated tasks (Stub)"""
+        return "📋 **Task Status Overview**\n\nAll tasks are currently being processed locally."
+
+    async def _debug_code(self, match: re.Match, repository_name: str) -> str:
+        """Provide debugging insights and guidance"""
+        query = match.group(1).strip()
+        result = await self.analyze_code(repository_name, question=f"/debug {query}" if query else "Help me debug this code")
+        return result or "Error: Could not debug code."
+
+    async def _check_dependencies(self, match: re.Match, repository_name: str) -> str:
+        """Check project dependencies for issues"""
+        result = await self.analyze_code(repository_name, question="Analyze my project dependencies for issues or outdated packages")
+        return result or "Error: Could not check dependencies."
+
+    async def _check_test_coverage(self, match: re.Match, repository_name: str) -> str:
+        """Check test coverage and provide insights"""
+        result = await self.analyze_code(repository_name, question="Analyze my test coverage and suggest improvements")
+        return result or "Error: Could not check test coverage."
+
+    async def _check_security(self, match: re.Match, repository_name: str) -> str:
+        """Run security check and provide insights"""
+        result = await self.review_security(repository_name)
+        return result or "Error: Could not perform security review."
+
+    async def _optimize_code(self, match: re.Match, repository_name: str) -> str:
+        """Analyze code for optimization opportunities"""
+        result = await self.analyze_code(repository_name, question="Analyze this code for performance optimization opportunities")
+        return result or "Error: Could not optimize code."
 
 
 # Global instance

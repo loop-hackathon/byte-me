@@ -131,6 +131,36 @@ def get_anomalies(
                 description=anomaly.description
             ))
         
+        
+        # Inject live PyOD Feature 1 Anomaly
+        try:
+            import requests
+            prom_url = "http://localhost:9090/api/v1/query"
+            r_anomaly = requests.get(prom_url, params={"query": "pyod_is_anomaly"}, timeout=1.0)
+            is_anomaly = float(r_anomaly.json()["data"]["result"][0]["value"][1]) if r_anomaly.json().get("data", {}).get("result") else 0.0
+            
+            r_score = requests.get(prom_url, params={"query": "pyod_anomaly_score"}, timeout=1.0)
+            score = float(r_score.json()["data"]["result"][0]["value"][1]) if r_score.json().get("data", {}).get("result") else 0.0
+            
+            if is_anomaly > 0:
+                from datetime import datetime
+                import uuid
+                live_anomaly = AnomalyResponse(
+                    id=str(uuid.uuid4()),
+                    service_name="feature1-node-app",
+                    timestamp=datetime.utcnow().isoformat(),
+                    anomaly_type="Multivariate PyOD Detect",
+                    severity="critical" if score > 15 else "high",
+                    anomaly_score=round(score, 3),
+                    affected_metrics=["request_rate", "latency", "cpu", "memory", "error_rate"],
+                    description=f"Live PyOD AI model detected anomalous traffic (Score: {score:.2f}). Check Grafana for full multivariate breakdown!"
+                )
+                if not service or service == "feature1-node-app":
+                    if not severity or severity in ["critical", "high"]:
+                        response.insert(0, live_anomaly)
+        except Exception as e:
+            logger.debug(f"Could not fetch PyOD anomalies from Prometheus: {e}")
+
         return response
     
     except Exception as e:

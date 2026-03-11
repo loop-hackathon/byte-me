@@ -76,7 +76,7 @@ export default function AppHealth() {
   const [metricsHistory, setMetricsHistory] = useState<MetricHistory[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [seeding, setSeeding] = useState(false);
-  const [activeTab, setActiveTab] = useState<'services' | 'anomalies' | 'infrastructure'>('services');
+  const [activeTab, setActiveTab] = useState<'services' | 'anomalies' | 'infrastructure' | 'feature1'>('services');
 
   useEffect(() => {
     loadAllData();
@@ -284,6 +284,17 @@ export default function AppHealth() {
           <Server className="w-4 h-4 inline mr-2" />
           Infrastructure
         </button>
+        <button
+          onClick={() => setActiveTab('feature1')}
+          className={`px-4 py-2 text-sm font-medium transition-all ${
+            activeTab === 'feature1'
+              ? 'text-cyan-400 border-b-2 border-cyan-400'
+              : 'text-slate-400 hover:text-slate-300'
+          }`}
+        >
+          <Activity className="w-4 h-4 inline mr-2" />
+          Grafana Metrics
+        </button>
       </div>
 
       {/* Services Tab */}
@@ -427,6 +438,17 @@ export default function AppHealth() {
               <p className="text-slate-400">Connect Docker or Kubernetes to monitor infrastructure</p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Feature 1 Grafana Dashboard Tab */}
+      {activeTab === 'feature1' && (
+        <div className="w-full h-[800px] bg-slate-900/60 backdrop-blur-lg border border-slate-700 rounded-xl overflow-hidden relative">
+          <iframe 
+            src="http://localhost:4000/d/cloudhelm-feature1/cloudhelm-feature-1-metrics?orgId=1&refresh=2s&theme=dark&kiosk" 
+            className="w-full h-full border-0 absolute top-0 left-0"
+            title="Feature 1 Grafana Dashboard">
+          </iframe>
         </div>
       )}
     </div>

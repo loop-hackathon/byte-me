@@ -17,6 +17,18 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
+  - job_name: 'feature1_node_app'
+    scrape_interval: 2s
+    static_configs:
+      - targets: ['feature1-node-app:3000']
+    metrics_path: /metrics
+
+  - job_name: 'feature1_pyod_app'
+    scrape_interval: 2s
+    static_configs:
+      - targets: ['feature1-pyod-app:8001']
+    metrics_path: /metrics
+
   # PostgreSQL exporter (optional - requires postgres_exporter)
   # - job_name: 'postgres'
   #   static_configs:
