@@ -15,11 +15,15 @@ from backend.schemas.cost import UploadResponse
 async def ingest_aws_cost_csv(file: UploadFile, db: Session, user_id: int) -> UploadResponse:
     """
     Ingest AWS Cost and Usage Report (CUR) CSV file.
-    Simplified version using standard library CSV parser.
+    
+    Supports two modes:
+    1. Standard AWS CUR format with specific column names
+    2. Flexible format - auto-detects service/cost/date columns by keyword
     
     Args:
         file: Uploaded CSV file
         db: Database session
+        user_id: Current user ID
         
     Returns:
         UploadResponse with ingestion statistics
@@ -29,15 +33,17 @@ async def ingest_aws_cost_csv(file: UploadFile, db: Session, user_id: int) -> Up
         contents = await file.read()
         content_str = contents.decode('utf-8')
         
-        # Parse CSV
-        csv_reader = csv.DictReader(io.StringIO(content_str))
-        rows = list(csv_reader)
+        # Use pandas for flexible parsing
+        df = pd.read_csv(io.StringIO(content_str))
         
-        if not rows:
+        if df.empty:
             raise HTTPException(status_code=400, detail="Empty CSV file")
         
-        # AWS CUR column mapping (simplified - adjust based on actual CUR format)
-        column_mapping = {
+        available_columns = df.columns.tolist()
+        
+        # --- FLEXIBLE COLUMN DETECTION ---
+        # Try standard AWS CUR mapping first, then fall back to auto-detection
+        aws_column_mapping = {
             'lineItem/UsageStartDate': 'usage_date',
             'lineItem/UnblendedCost': 'cost',
             'lineItem/UsageAccountId': 'account_id',
@@ -49,23 +55,94 @@ async def ingest_aws_cost_csv(file: UploadFile, db: Session, user_id: int) -> Up
             'resourceTags/user:team': 'team',
         }
         
-        # Find matching columns (case-insensitive)
-        available_columns = list(rows[0].keys()) if rows else []
         column_map = {}
-        
-        for aws_col, normalized_col in column_mapping.items():
+        for aws_col, norm_col in aws_column_mapping.items():
             for col in available_columns:
                 if col == aws_col or col.lower() == aws_col.lower():
-                    column_map[normalized_col] = col
+                    column_map[norm_col] = col
                     break
         
-        # Ensure required columns exist
-        required_cols = ['usage_date', 'cost', 'account_id', 'service']
-        missing_cols = [col for col in required_cols if col not in column_map]
-        if missing_cols:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Missing required columns in AWS CUR: {missing_cols}"
+        # Check if standard format has required columns
+        required = ['usage_date', 'cost', 'service']
+        missing = [c for c in required if c not in column_map]
+        
+        if missing:
+            # Fall back to flexible auto-detection (feature_2-style)
+            column_map = {}
+            
+            # Auto-detect service column
+            service_col = next(
+                (c for c in available_columns
+                 if 'service' in c.lower() or 'product' in c.lower()),
+                available_columns[0]
+            )
+            column_map['service'] = service_col
+            
+            # Auto-detect cost column
+            cost_col = next(
+                (c for c in available_columns
+                 if 'cost' in c.lower() or 'amount' in c.lower()),
+                available_columns[-1]
+            )
+            column_map['cost'] = cost_col
+            
+            # Auto-detect date column
+            date_col = next(
+                (c for c in available_columns
+                 if 'date' in c.lower() or 'time' in c.lower()),
+                None
+            )
+            if date_col:
+                column_map['usage_date'] = date_col
+            
+            # Auto-detect region / availability zone
+            region_col = next(
+                (c for c in available_columns
+                 if 'region' in c.lower() or 'zone' in c.lower()
+                 or 'availability' in c.lower() or 'location' in c.lower()),
+                None
+            )
+            if region_col:
+                column_map['region'] = region_col
+            
+            # Auto-detect usage type
+            usage_col = next(
+                (c for c in available_columns
+                 if 'usage' in c.lower() and 'type' in c.lower()),
+                None
+            )
+            if usage_col:
+                column_map['usage_type'] = usage_col
+            
+            # Auto-detect currency
+            currency_col = next(
+                (c for c in available_columns
+                 if 'currency' in c.lower()),
+                None
+            )
+            if currency_col:
+                column_map['currency'] = currency_col
+            
+            # Auto-detect account
+            account_col = next(
+                (c for c in available_columns
+                 if 'account' in c.lower() or 'subscription' in c.lower()
+                 or 'project' in c.lower()),
+                None
+            )
+            if account_col:
+                column_map['account_id'] = account_col
+        
+        # Ensure cost is numeric
+        cost_col_name = column_map.get('cost', column_map.get('cost'))
+        if cost_col_name:
+            df[cost_col_name] = pd.to_numeric(df[cost_col_name], errors='coerce').fillna(0)
+        
+        # Handle date parsing
+        if 'usage_date' in column_map:
+            date_col_name = column_map['usage_date']
+            df[date_col_name] = pd.to_datetime(
+                df[date_col_name], errors='coerce', dayfirst=True
             )
         
         # Process rows
@@ -73,52 +150,56 @@ async def ingest_aws_cost_csv(file: UploadFile, db: Session, user_id: int) -> Up
         total_cost = 0.0
         dates = []
         
-        for row in rows:
+        for _, row in df.iterrows():
             try:
-                # Extract and validate data
-                usage_date_str = row.get(column_map['usage_date'], '')
-                cost_str = row.get(column_map['cost'], '0')
-                
-                if not usage_date_str or not cost_str:
+                # Parse cost
+                cost_val = float(row[column_map['cost']]) if 'cost' in column_map else 0.0
+                if cost_val <= 0:
                     continue
                 
                 # Parse date
-                usage_date = datetime.strptime(usage_date_str.split('T')[0], '%Y-%m-%d').date()
+                if 'usage_date' in column_map:
+                    dt = row[column_map['usage_date']]
+                    if pd.isna(dt):
+                        usage_date = date.today()
+                    else:
+                        usage_date = dt.date() if hasattr(dt, 'date') else date.today()
+                else:
+                    usage_date = date.today()
                 
-                # Parse cost
-                cost = float(cost_str)
-                if cost <= 0:
-                    continue
+                # Extract service
+                service = str(row[column_map['service']]) if 'service' in column_map else 'unknown'
                 
-                # Extract other fields
-                account_id = row.get(column_map['account_id'], '')
-                service = row.get(column_map['service'], '')
-                region = row.get(column_map.get('region', ''), 'unknown')
-                usage_type = row.get(column_map.get('usage_type', ''), None)
-                currency = row.get(column_map.get('currency', ''), 'USD')
-                env = row.get(column_map.get('env', ''), None)
-                team = row.get(column_map.get('team', ''), None)
+                # Extract region
+                region = str(row[column_map['region']]) if 'region' in column_map and pd.notna(row.get(column_map.get('region', ''), None)) else 'unknown'
                 
-                # Create record
+                # Extract account
+                account_id = str(row[column_map['account_id']]) if 'account_id' in column_map and pd.notna(row.get(column_map.get('account_id', ''), None)) else 'default'
+                
+                # Extract optional fields
+                usage_type = str(row[column_map['usage_type']]) if 'usage_type' in column_map and pd.notna(row.get(column_map.get('usage_type', ''), None)) else None
+                currency = str(row[column_map['currency']]) if 'currency' in column_map and pd.notna(row.get(column_map.get('currency', ''), None)) else 'USD'
+                env = str(row[column_map['env']]) if 'env' in column_map and pd.notna(row.get(column_map.get('env', ''), None)) else None
+                team = str(row[column_map['team']]) if 'team' in column_map and pd.notna(row.get(column_map.get('team', ''), None)) else None
+                
                 record = CloudCost(
                     ts_date=usage_date,
                     cloud='aws',
-                    account_id=str(account_id),
-                    service=str(service),
-                    region=str(region),
-                    env=str(env) if env else None,
-                    team=str(team) if team else None,
-                    usage_type=str(usage_type) if usage_type else None,
-                    cost_amount=cost,
-                    currency=str(currency),
-                    user_id=user_id
+                    account_id=account_id,
+                    service=service,
+                    region=region,
+                    env=env,
+                    team=team,
+                    usage_type=usage_type,
+                    cost_amount=cost_val,
+                    currency=currency,
+                    user_id=user_id,
                 )
                 records.append(record)
-                total_cost += cost
+                total_cost += cost_val
                 dates.append(usage_date)
                 
-            except (ValueError, TypeError) as e:
-                # Skip invalid rows
+            except (ValueError, TypeError):
                 continue
         
         if not records:

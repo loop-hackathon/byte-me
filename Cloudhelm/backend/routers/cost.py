@@ -1,7 +1,10 @@
 """
 Cost management API endpoints.
 """
+import os
+from pathlib import Path
 from fastapi import APIRouter, Depends, File, UploadFile, Query, HTTPException
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, desc
 from typing import Optional, List
@@ -10,9 +13,10 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 
 from backend.core.db import get_db
+from backend.core.config import settings
 from backend.core.security import get_current_user
 from backend.models.user import User
-from backend.models.cost import CloudCost, CostAggregate, CostAnomaly
+from backend.models.cost import CloudCost, CostAggregate, CostAnomaly, Budget
 from backend.schemas.cost import (
     UploadResponse,
     RecomputeAggregatesRequest,
@@ -35,6 +39,7 @@ from backend.services.cost_aggregation import (
     get_budget_statuses
 )
 from backend.services.cost_anomaly import recompute_cost_anomalies
+from backend.services.cost_billing import BillingService
 
 router = APIRouter(prefix="/api/cost", tags=["cost"])
 
@@ -342,3 +347,215 @@ async def get_cost_forecast(
         ))
     
     return forecasts
+
+
+@router.post("/billing/analyze")
+async def analyze_billing_csv(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Analyze a cost CSV file using flexible column detection.
+    Returns cost trends, anomalies, budget status, and AI insights.
+    
+    This endpoint processes the CSV entirely in-memory and returns
+    immediate analysis results without storing to the database.
+    Uses the BillingService from feature_2 for flexible parsing.
+    """
+    try:
+        contents = await file.read()
+        csv_content = contents.decode('utf-8', errors='replace')
+
+        gemini_key = settings.gemini_api_key
+        analysis = await BillingService.analyze(csv_content, gemini_key)
+
+        # Convert to CloudHelm frontend format
+        result = BillingService.convert_to_cloudhelm_format(
+            analysis, current_user.id
+        )
+
+        return JSONResponse(content={
+            "success": True,
+            "data": analysis,
+            "cloudhelm_format": result,
+        })
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Error analyzing CSV: {str(e)}"
+        )
+
+
+@router.post("/seed-demo")
+async def seed_demo_cost_data(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Seed the database with demo cost data from the sample CSVs
+    in the fetaures_2 directory. This populates the cost tables
+    so the Cost Dashboard has data to display.
+    Also auto-creates budgets and runs aggregation + anomaly detection.
+    """
+    try:
+        # Locate sample CSV files
+        base_dir = Path(__file__).parent.parent.parent  # project root
+        csv_files = [
+            base_dir / "fetaures_2" / "aws_unique_dates_sample.csv",
+            base_dir / "fetaures_2" / "aws_cost_usage_sample_different.csv",
+        ]
+
+        total_rows = 0
+        total_cost_amount = 0.0
+        all_dates: list[date] = []
+
+        for csv_path in csv_files:
+            if not csv_path.exists():
+                continue
+
+            import pandas as pd, io
+            df = pd.read_csv(str(csv_path))
+
+            # Auto-detect columns
+            cols = df.columns.tolist()
+            service_col = next(
+                (c for c in cols if 'service' in c.lower() or 'product' in c.lower()),
+                cols[0]
+            )
+            cost_col = next(
+                (c for c in cols if 'cost' in c.lower() or 'amount' in c.lower()),
+                cols[-1]
+            )
+            date_col = next(
+                (c for c in cols if 'date' in c.lower() or 'time' in c.lower()),
+                None
+            )
+            region_col = next(
+                (c for c in cols if 'zone' in c.lower() or 'region' in c.lower()
+                 or 'availability' in c.lower()),
+                None
+            )
+            usage_col = next(
+                (c for c in cols if 'usage' in c.lower() and c != cost_col),
+                None
+            )
+            currency_col = next(
+                (c for c in cols if 'currency' in c.lower()),
+                None
+            )
+
+            df[cost_col] = pd.to_numeric(df[cost_col], errors='coerce').fillna(0)
+
+            if date_col:
+                df[date_col] = pd.to_datetime(df[date_col], errors='coerce', dayfirst=True)
+
+            for _, row in df.iterrows():
+                try:
+                    cost_val = float(row[cost_col])
+                    if cost_val <= 0:
+                        continue
+
+                    if date_col and pd.notna(row[date_col]):
+                        dt = row[date_col]
+                        usage_date = dt.date() if hasattr(dt, 'date') else date.today()
+                    else:
+                        usage_date = date.today()
+
+                    service = str(row[service_col])
+                    region = str(row[region_col]) if region_col and pd.notna(row.get(region_col)) else 'us-east-1'
+                    usage_type = str(row[usage_col]) if usage_col and pd.notna(row.get(usage_col)) else None
+                    currency = str(row[currency_col]) if currency_col and pd.notna(row.get(currency_col)) else 'USD'
+
+                    record = CloudCost(
+                        ts_date=usage_date,
+                        cloud='aws',
+                        account_id='demo-account',
+                        service=service,
+                        region=region,
+                        env='prod',
+                        team=service.replace('Amazon', '').strip() + '-team',
+                        usage_type=usage_type,
+                        cost_amount=cost_val,
+                        currency=currency,
+                        user_id=current_user.id,
+                    )
+                    db.add(record)
+                    total_rows += 1
+                    total_cost_amount += cost_val
+                    all_dates.append(usage_date)
+
+                except (ValueError, TypeError):
+                    continue
+
+        db.commit()
+
+        if total_rows == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="No sample CSV files found or no valid data in them."
+            )
+
+        # Auto-create budgets for each service/team
+        service_costs = db.query(
+            CloudCost.team,
+            func.sum(CloudCost.cost_amount).label('total')
+        ).filter(
+            CloudCost.user_id == current_user.id
+        ).group_by(CloudCost.team).all()
+
+        import random
+        for team_name, total in service_costs:
+            if not team_name:
+                continue
+            existing = db.query(Budget).filter(
+                Budget.team == team_name,
+                Budget.user_id == current_user.id
+            ).first()
+            if not existing:
+                variance = random.uniform(0.8, 1.3)
+                budget = Budget(
+                    team=team_name,
+                    service=None,
+                    monthly_budget_amount=float(total) * variance,
+                    currency='USD',
+                    user_id=current_user.id,
+                )
+                db.add(budget)
+
+        db.commit()
+
+        # Run aggregation
+        min_date = min(all_dates) if all_dates else date.today()
+        max_date = max(all_dates) if all_dates else date.today()
+        agg_rows = recompute_cost_aggregates(
+            db, current_user.id, min_date, max_date
+        )
+
+        # Run anomaly detection
+        anomalies_detected = 0
+        try:
+            anomalies_detected = recompute_cost_anomalies(db, current_user.id)
+        except Exception:
+            pass  # Anomaly detection may fail with small datasets
+
+        return {
+            "success": True,
+            "rows_ingested": total_rows,
+            "total_cost": round(total_cost_amount, 2),
+            "date_range": {
+                "start": str(min_date),
+                "end": str(max_date)
+            },
+            "aggregates_computed": agg_rows,
+            "anomalies_detected": anomalies_detected,
+            "message": f"Seeded {total_rows} cost records, computed {agg_rows} aggregates"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error seeding demo data: {str(e)}"
+        )

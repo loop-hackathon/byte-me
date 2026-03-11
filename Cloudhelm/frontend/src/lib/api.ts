@@ -221,6 +221,40 @@ class ApiClient {
     return this.handleResponse(response);
   }
 
+  async seedDemoData(): Promise<any> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/cost/seed-demo`,
+      {
+        method: 'POST',
+        headers: this.getHeaders(),
+        credentials: 'include',
+      }
+    );
+    return this.handleResponse(response);
+  }
+
+  async analyzeBillingCsv(file: File): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const token = localStorage.getItem('access_token');
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(
+      `${API_BASE_URL}/api/cost/billing/analyze`,
+      {
+        method: 'POST',
+        headers,
+        body: formData,
+        credentials: 'include',
+      }
+    );
+    return this.handleResponse(response);
+  }
+
   // Overview endpoints
   async getKPISummary(params: {
     time_range?: string;
