@@ -317,7 +317,9 @@ class ReleaseService:
                 security_impact = {
                     "risk_score": scan_result["risk_score"],
                     "security_metrics": scan_result["security_metrics"],
+                    "vulnerabilities": scan_result.get("vulnerabilities", []),
                     "scan_status": "success",
+                    "sbom": scan_result.get("sbom"),
                 }
                 # Blend: 60% existing risk score + 40% security score
                 blended_score = (

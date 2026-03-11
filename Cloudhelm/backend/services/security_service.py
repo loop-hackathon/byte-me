@@ -63,6 +63,8 @@ def run_trivy_scan(repo_path: str) -> str:
         "-v", f"{normalised}:/project",
         "aquasec/trivy",
         "fs", "/project",
+        "--scanners", "vuln,secret",
+        "--severity", "HIGH,CRITICAL",
         "-f", "json",
         "--exit-code", "0",   # never fail just because vulns were found
         "--quiet",             # suppress progress output
@@ -97,31 +99,36 @@ def run_trivy_scan(repo_path: str) -> str:
     return result.stdout
 
 
-def parse_trivy_results(raw_json: str) -> VulnCounts:
+def run_trivy_sbom(repo_path: str) -> str:
+    """Run a Trivy scan to generate an SBOM in CycloneDX format."""
+    if sys.platform.startswith("win"):
+        normalised = repo_path.replace("\\", "/")
+    else:
+        normalised = repo_path
+
+    cmd = [
+        "docker", "run", "--rm",
+        "-v", f"{normalised}:/project",
+        "aquasec/trivy",
+        "fs", "/project",
+        "-f", "cyclonedx",
+        "--quiet",
+    ]
+
+    logger.info("Running Trivy SBOM generation: %s", " ".join(cmd))
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if result.returncode != 0:
+            raise RuntimeError(f"Trivy SBOM generation failed: {result.stderr[:500]}")
+        return result.stdout
+    except Exception as e:
+        logger.error(f"Error generating SBOM: {e}")
+        return "{}"
+
+
+def parse_trivy_results(raw_json: str) -> Dict:
     """
-    Parse Trivy's JSON output and aggregate vulnerability counts by severity.
-
-    Trivy JSON structure (abbreviated):
-    {
-        "Results": [
-            {
-                "Vulnerabilities": [
-                    {"Severity": "CRITICAL", ...},
-                    {"Severity": "HIGH", ...},
-                    ...
-                ]
-            }
-        ]
-    }
-
-    Args:
-        raw_json: JSON string from Trivy.
-
-    Returns:
-        Dict with keys: critical, high, medium, low, unknown.
-
-    Raises:
-        ValueError: If the JSON cannot be parsed.
+    Parse Trivy's JSON output and return both counts and detail list.
     """
     counts: VulnCounts = {
         "critical": 0,
@@ -130,6 +137,7 @@ def parse_trivy_results(raw_json: str) -> VulnCounts:
         "low": 0,
         "unknown": 0,
     }
+    vulnerabilities_detail = []
 
     try:
         data = json.loads(raw_json)
@@ -140,18 +148,31 @@ def parse_trivy_results(raw_json: str) -> VulnCounts:
     for result_block in results:
         vulnerabilities = result_block.get("Vulnerabilities") or []
         for vuln in vulnerabilities:
-            severity = vuln.get("Severity", "UNKNOWN").lower()
-            if severity in counts:
-                counts[severity] += 1
+            severity = vuln.get("Severity", "UNKNOWN").upper()
+            severity_lower = severity.lower()
+            if severity_lower in counts:
+                counts[severity_lower] += 1
             else:
                 counts["unknown"] += 1
+            
+            vulnerabilities_detail.append({
+                "id": vuln.get("VulnerabilityID", "N/A"),
+                "title": vuln.get("Title"),
+                "description": vuln.get("Description"),
+                "severity": severity,
+                "package_name": vuln.get("PkgName", "unknown"),
+                "installed_version": vuln.get("InstalledVersion", "unknown"),
+                "fixed_version": vuln.get("FixedVersion"),
+                "primary_url": vuln.get("PrimaryURL"),
+            })
 
     logger.info(
-        "Trivy parsed: critical=%d high=%d medium=%d low=%d unknown=%d",
-        counts["critical"], counts["high"], counts["medium"],
-        counts["low"], counts["unknown"],
+        "Trivy parsed %d vulnerabilities", len(vulnerabilities_detail)
     )
-    return counts
+    return {
+        "counts": counts,
+        "detail": vulnerabilities_detail
+    }
 
 
 def calculate_security_risk_score(metrics: VulnCounts) -> float:
@@ -242,7 +263,6 @@ def scan_repository(
 
         clone_cmd = [
             "git", "clone",
-            "--depth", "1",     # shallow — speeds things up
             clone_url,
             repo_dir,
         ]
@@ -282,12 +302,20 @@ def scan_repository(
         # Run Trivy scan
         # ------------------------------------------------------------------
         raw_json = run_trivy_scan(repo_dir)
+        sbom_raw = run_trivy_sbom(repo_dir)
 
         # ------------------------------------------------------------------
         # Parse and score
         # ------------------------------------------------------------------
-        metrics = parse_trivy_results(raw_json)
+        parsed = parse_trivy_results(raw_json)
+        metrics = parsed["counts"]
+        detail = parsed["detail"]
         score = calculate_security_risk_score(metrics)
+
+        try:
+            sbom = json.loads(sbom_raw)
+        except:
+            sbom = {}
 
         return {
             "risk_score": score,
@@ -298,6 +326,8 @@ def scan_repository(
                 "low": metrics["low"],
                 "unknown": metrics.get("unknown", 0),
             },
+            "vulnerabilities": detail,
+            "sbom": sbom
         }
 
     except FileNotFoundError as exc:

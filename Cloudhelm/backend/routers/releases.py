@@ -15,7 +15,8 @@ from backend.schemas.release import (
     RepositoryResponse, 
     ReleaseResponse, 
     ReleaseImpactResponse,
-    SyncRequest
+    SyncRequest,
+    ScanRequest
 )
 from backend.services.release_service import release_service
 
@@ -119,6 +120,49 @@ def get_repository(
     if not repo or repo.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Repository not found")
     return repo
+
+
+@repos_router.post("/{repo_id}/scan")
+async def scan_repository_security(
+    repo_id: str,
+    scan_data: Optional[ScanRequest] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Trigger a manual security scan for a repository"""
+    try:
+        # Get repository
+        repo = release_service.get_repository(db, repo_id)
+        if not repo or repo.user_id != current_user.id:
+            raise HTTPException(status_code=404, detail="Repository not found")
+        
+        # Use the GitHub token from the logged-in user if available
+        token = current_user.github_access_token
+        ref = scan_data.ref if scan_data else None
+        
+        logger.info(f"Triggering manual security scan for {repo.full_name} at ref {ref or 'default'}")
+        
+        # Run security scan
+        from backend.services import security_service as sec_svc
+        scan_result = sec_svc.scan_repository(
+            repo_full_name=repo.full_name,
+            token=token,
+            ref=ref
+        )
+        
+        if not scan_result:
+            raise HTTPException(status_code=500, detail="Security scan failed or produced no results")
+        
+        return {
+            "message": "Security scan completed successfully",
+            "results": scan_result
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error scanning repository security: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @repos_router.post("/sync")

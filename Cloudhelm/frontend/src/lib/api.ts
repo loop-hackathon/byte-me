@@ -478,6 +478,19 @@ class ApiClient {
     return this.handleResponse<ReleaseImpact>(response);
   }
 
+  async scanRepositorySecurity(repoId: string, ref?: string): Promise<any> {
+    const response = await fetch(
+      `${API_BASE_URL}/repos/${repoId}/scan`,
+      {
+        method: 'POST',
+        headers: this.getHeaders(),
+        credentials: 'include',
+        body: ref ? JSON.stringify({ ref }) : undefined,
+      }
+    );
+    return this.handleResponse(response);
+  }
+
   // Resource Efficiency endpoints
   async ingestMetrics(data: {
     resource_id: string;

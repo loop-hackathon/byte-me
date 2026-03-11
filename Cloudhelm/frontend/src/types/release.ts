@@ -51,6 +51,33 @@ export interface Incident {
   affected_services: string[];
 }
 
+export interface Vulnerability {
+  id: string;
+  title?: string;
+  description?: string;
+  severity: string;
+  package_name: string;
+  installed_version: string;
+  fixed_version?: string;
+  primary_url?: string;
+}
+
+export interface SecurityMetrics {
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  unknown: number;
+}
+
+export interface SecurityImpact {
+  risk_score: number;
+  security_metrics: SecurityMetrics;
+  vulnerabilities: Vulnerability[];
+  scan_status: string;
+  sbom?: any;
+}
+
 export interface ReleaseImpact {
   release_id: string;
   risk_score: number;
@@ -68,6 +95,7 @@ export interface ReleaseImpact {
   anomalies: Anomaly[];
   incidents: Incident[];
   metrics_before_after: MetricComparison[];
+  security?: SecurityImpact;
 }
 
 export interface MetricComparison {
@@ -78,3 +106,4 @@ export interface MetricComparison {
   change_percentage: number;
   is_anomalous: boolean;
 }
+

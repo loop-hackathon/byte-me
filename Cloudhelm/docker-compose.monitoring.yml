@@ -13,7 +13,7 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cloudhelm_user"]
+      test: [ "CMD-SHELL", "pg_isready -U cloudhelm_user" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -102,6 +102,7 @@ volumes:
   postgres_data:
   prometheus_data:
   grafana_data:
+
 
 networks:
   cloudhelm-network:

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { Repository, Release } from '../types/release';
+import type { Repository, Release, Vulnerability } from '../types/release';
 import { api } from '../lib/api';
 import CloudHelmAssistant from '../components/CloudHelmAssistant';
 
@@ -72,16 +72,98 @@ const RiskBadge: React.FC<{ level: 'Healthy' | 'Suspect' | 'Risky'; size?: 'sm' 
 };
 
 // Badge Component - CloudHelm styled
-const Badge: React.FC<{ variant: 'success' | 'danger' | 'warning'; children: React.ReactNode }> = ({ variant, children }) => {
+const Badge: React.FC<{ variant: 'success' | 'danger' | 'warning' | 'info'; children: React.ReactNode }> = ({ variant, children }) => {
   const styles = {
     success: 'bg-green-500/10 text-green-400 border-green-500/30',
     danger: 'bg-red-500/10 text-red-400 border-red-500/30',
     warning: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
+    info: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
   };
   return (
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${styles[variant]}`}>
       {children}
     </span>
+  );
+};
+
+const VulnerabilityItem: React.FC<{ 
+  vulnerability: Vulnerability; 
+  isExpanded: boolean; 
+  onToggle: () => void 
+}> = ({ vulnerability, isExpanded, onToggle }) => {
+  const severityColors = {
+    CRITICAL: 'bg-red-600 text-white font-black',
+    HIGH: 'bg-orange-600 text-white font-bold',
+    MEDIUM: 'bg-yellow-600 text-white',
+    LOW: 'bg-blue-600 text-white',
+    UNKNOWN: 'bg-gray-600 text-white',
+  }[vulnerability.severity] || 'bg-gray-600 text-white';
+
+  return (
+    <div className="border-b border-slate-800 last:border-0">
+      <div 
+        className="flex items-center py-4 px-4 hover:bg-slate-800/30 cursor-pointer transition-colors"
+        onClick={onToggle}
+      >
+        <div className={`w-24 text-center py-1 rounded text-[10px] uppercase mr-6 ${severityColors}`}>
+          {vulnerability.severity}
+        </div>
+        <div className="w-40 text-sm font-mono text-slate-300 mr-6">
+          {vulnerability.id}
+        </div>
+        <div className="flex-1 text-sm text-white">
+          {vulnerability.package_name}
+        </div>
+        <div className="text-slate-500">
+          <svg className={`w-5 h-5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      </div>
+      
+      {isExpanded && (
+        <div className="px-4 pb-6 pt-2 bg-slate-800/20">
+          <div className="pl-30 md:pl-76">
+            <h4 className="text-lg font-bold text-white mb-2">
+              {vulnerability.title || vulnerability.package_name}
+            </h4>
+            <p className="text-slate-400 text-sm mb-4 leading-relaxed">
+              {vulnerability.description || 'No description provided.'}
+            </p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 border-t border-slate-700/50 pt-4">
+              <div className="flex text-sm">
+                <span className="w-32 text-slate-500">Package Name:</span>
+                <span className="text-slate-200">{vulnerability.package_name}</span>
+              </div>
+              <div className="flex text-sm">
+                <span className="w-32 text-slate-500">Installed Version:</span>
+                <span className="font-mono text-cyan-400">{vulnerability.installed_version}</span>
+              </div>
+              <div className="flex text-sm">
+                <span className="w-32 text-slate-500">Fixed Version:</span>
+                <span className="font-mono text-green-400">{vulnerability.fixed_version || 'N/A'}</span>
+              </div>
+              <div className="flex text-sm">
+                <span className="w-32 text-slate-500">More Info:</span>
+                {vulnerability.primary_url ? (
+                  <a 
+                    href={vulnerability.primary_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-cyan-400 hover:underline break-all"
+                  >
+                    {vulnerability.primary_url}
+                  </a>
+                ) : (
+                  <span className="text-slate-500 italic">No link available</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -93,9 +175,15 @@ export default function Releases() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [securityScan, setSecurityScan] = useState<any>(null);
+  const [scanning, setScanning] = useState(false);
+  const [vulnFilter, setVulnFilter] = useState<string>('ALL');
+  const [expandedVuln, setExpandedVuln] = useState<string | null>(null);
+  const [showSBOM, setShowSBOM] = useState(false);
 
   // Memoized stats calculation
   const stats = useMemo(() => ({
+
     total: releases.length,
     healthy: releases.filter(r => r.risk_level === 'Healthy').length,
     suspect: releases.filter(r => r.risk_level === 'Suspect').length,
@@ -172,17 +260,47 @@ export default function Releases() {
     }
   }, []);
 
+  // Run security scan
+  const runSecurityScan = useCallback(async (repoId: string, ref?: string) => {
+    try {
+      setScanning(true);
+      const result = await api.scanRepositorySecurity(repoId, ref);
+      setSecurityScan(result.results);
+    } catch (err: any) {
+      console.error('Security scan failed:', err);
+    } finally {
+      setScanning(false);
+    }
+  }, []);
+
   // Load repositories on mount
   useEffect(() => {
     loadRepositories();
   }, [loadRepositories]);
 
-  // Load releases when repository is selected
+  // Load releases and trigger security scan when repository is selected
   useEffect(() => {
-    if (selectedRepo) {
-      loadReleases(selectedRepo);
-    }
-  }, [selectedRepo, loadReleases]);
+    const initRepoView = async () => {
+      if (selectedRepo) {
+        // Reset scan results when changing repo
+        setSecurityScan(null);
+        setExpandedVuln(null);
+        setVulnFilter('ALL');
+        
+        // Load releases first to get the latest commit for security scan
+        await loadReleases(selectedRepo);
+        
+        // We need to get the latest releases directly here because the state update 
+        // might not have propagated yet for the subsequent runSecurityScan call
+        const repoReleases = await api.getRepositoryReleases(selectedRepo);
+        const latestCommit = repoReleases.length > 0 ? repoReleases[0].commit : undefined;
+        
+        runSecurityScan(selectedRepo, latestCommit);
+      }
+    };
+    
+    initRepoView();
+  }, [selectedRepo, loadReleases, runSecurityScan]);
 
   const handleSyncRepositories = useCallback(async () => {
     try {
@@ -379,7 +497,7 @@ export default function Releases() {
         </div>
 
         {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
           <div className="bg-slate-900/60 backdrop-blur-lg border border-slate-700 rounded-xl p-6">
             <p className="text-sm text-slate-400 mb-1">Total Releases</p>
             <p className="text-3xl font-bold text-white">{stats.total}</p>
@@ -389,14 +507,157 @@ export default function Releases() {
             <p className="text-3xl font-bold text-green-400">{stats.healthy}</p>
           </div>
           <div className="bg-slate-900/60 backdrop-blur-lg border border-slate-700 rounded-xl p-6">
-            <p className="text-sm text-slate-400 mb-1">Suspect</p>
-            <p className="text-3xl font-bold text-yellow-400">{stats.suspect}</p>
-          </div>
-          <div className="bg-slate-900/60 backdrop-blur-lg border border-slate-700 rounded-xl p-6">
             <p className="text-sm text-slate-400 mb-1">Risky</p>
             <p className="text-3xl font-bold text-red-400">{stats.risky}</p>
           </div>
+          <div className="bg-slate-900/60 backdrop-blur-lg border border-slate-700 rounded-xl p-6">
+            <p className="text-sm text-slate-400 mb-1">Security Score</p>
+            <p className={`text-3xl font-bold ${
+              securityScan ? (
+                securityScan.risk_score < 30 ? 'text-green-400' :
+                securityScan.risk_score < 70 ? 'text-yellow-400' : 'text-red-400'
+              ) : 'text-slate-500'
+            }`}>
+              {scanning ? '...' : securityScan ? `${Math.round(securityScan.risk_score)}%` : 'N/A'}
+            </p>
+          </div>
+          <div className="bg-slate-900/60 backdrop-blur-lg border border-slate-700 rounded-xl p-6">
+            <p className="text-sm text-slate-400 mb-1">Scan Status</p>
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${
+                scanning ? 'bg-blue-400 animate-pulse' :
+                securityScan ? 'bg-green-400' : 'bg-slate-600'
+              }`} />
+              <p className="text-lg font-bold text-white">
+                {scanning ? 'Running...' : securityScan ? 'Completed' : 'Not Scanned'}
+              </p>
+            </div>
+          </div>
         </div>
+
+        {/* Security Scan Results */}
+        {securityScan && (
+          <div className="bg-slate-900/60 backdrop-blur-lg border border-slate-700 rounded-xl p-6 mb-8 overflow-hidden">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-white flex items-center">
+                <svg className="w-6 h-6 mr-2 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.040L3 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622l-0.382-3.016z" />
+                </svg>
+                Vulnerability Scan Results
+              </h3>
+              <button 
+                onClick={() => setShowSBOM(true)}
+                className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors"
+              >
+                Generate SBOM Output
+              </button>
+            </div>
+
+            {/* Severity Tabs */}
+            <div className="flex border-b border-slate-800 mb-6">
+              {[
+                { id: 'ALL', label: 'ALL', count: securityScan.vulnerabilities?.length || 0 },
+                { id: 'CRITICAL', label: 'CRITICAL', count: securityScan.security_metrics.critical },
+                { id: 'HIGH', label: 'HIGH', count: securityScan.security_metrics.high },
+                { id: 'MEDIUM', label: 'MEDIUM', count: securityScan.security_metrics.medium },
+                { id: 'LOW', label: 'LOW', count: securityScan.security_metrics.low },
+                { id: 'UNKNOWN', label: 'UNKNOWN', count: securityScan.security_metrics.unknown },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setVulnFilter(tab.id)}
+                  className={`px-6 py-3 text-xs font-bold transition-all relative ${
+                    vulnFilter === tab.id 
+                      ? 'text-white border-b-2 border-red-500' 
+                      : 'text-slate-500 hover:text-slate-300'
+                  }`}
+                >
+                  {tab.label} ({tab.count})
+                </button>
+              ))}
+            </div>
+            
+            <div className="bg-slate-900/40 rounded-lg border border-slate-800">
+              <div className="px-4 py-3 border-b border-slate-800 flex text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-slate-800/20">
+                <div className="w-24 mr-6">Severity</div>
+                <div className="w-40 mr-6">CVE ID</div>
+                <div className="flex-1">Package</div>
+              </div>
+              
+              <div className="max-h-[500px] overflow-y-auto">
+                {securityScan.vulnerabilities
+                  ?.filter((v: any) => vulnFilter === 'ALL' || v.severity === vulnFilter)
+                  .map((vuln: any, idx: number) => (
+                    <VulnerabilityItem 
+                      key={`${vuln.id}-${idx}`}
+                      vulnerability={vuln}
+                      isExpanded={expandedVuln === `${vuln.id}-${idx}`}
+                      onToggle={() => setExpandedVuln(expandedVuln === `${vuln.id}-${idx}` ? null : `${vuln.id}-${idx}`)}
+                    />
+                  )) || (
+                    <div className="py-12 text-center text-slate-500">
+                      No vulnerabilities found for this severity level.
+                    </div>
+                  )}
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-between items-center bg-slate-800/30 p-4 rounded-lg border border-slate-700/50">
+              <div className="flex items-center text-sm text-slate-400">
+                <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Scan based on latest release version (v{releases[0]?.version || 'latest'})
+              </div>
+              <button 
+                onClick={() => runSecurityScan(selectedRepo!)}
+                disabled={scanning}
+                className="text-cyan-400 hover:text-cyan-300 text-xs font-bold uppercase tracking-widest flex items-center transition-colors"
+              >
+                <svg className={`w-3 h-3 mr-1 ${scanning ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Rescan Repository
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* SBOM Modal */}
+        {showSBOM && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl max-h-[80vh] flex flex-col shadow-2xl">
+              <div className="flex justify-between items-center p-6 border-b border-slate-800">
+                <h3 className="text-xl font-bold text-white">Software Bill of Materials (SBOM)</h3>
+                <button onClick={() => setShowSBOM(false)} className="text-slate-400 hover:text-white">
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="p-6 overflow-y-auto font-mono text-xs text-cyan-400/80 bg-slate-950/50">
+                <pre className="whitespace-pre-wrap">
+                  {JSON.stringify(securityScan?.sbom || { message: "SBOM not available for this scan" }, null, 2)}
+                </pre>
+              </div>
+              <div className="p-4 border-t border-slate-800 flex justify-end bg-slate-900/50">
+                <button 
+                  onClick={() => {
+                    const blob = new Blob([JSON.stringify(securityScan.sbom, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `sbom-${selectedRepo}.json`;
+                    a.click();
+                  }}
+                  className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                >
+                  Download JSON
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Releases List */}
         <div>
