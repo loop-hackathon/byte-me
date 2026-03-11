@@ -1,0 +1,247 @@
+# Kiro IDE
+.kiro/
+
+# Reference files
+refrence/
+
+# Documentation files (except README.md)
+*.md
+!README.md
+
+# Environment Variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.production
+.env.docker
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+# Ignore Python lib directory but not frontend lib
+/lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+.env
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Build outputs
+dist/
+dist-ssr/
+*.local
+
+# Editor directories and files
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Logs
+logs/
+*.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# PostgreSQL
+*.sql
+
+# Backup files
+*.bak
+*.backup
+*.tmp
+
+# OS
+Thumbs.db
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Docker
+.dockerignore
+
+# Coverage reports
+coverage/
+*.cover
+*.py,cover
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff (if used in future)
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff (if used in future)
+instance/
+.webassets-cache
+
+# Scrapy stuff (if used in future)
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Celery stuff (if used in future)
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# Temporary files
+*.swp
+*.swo
+*~
+
+# Package files
+*.tar.gz
+*.zip
+*.rar
+
+# Compiled files
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+
+# Security
+*.pem
+*.key
+*.cert
+*.crt
+secrets/
+credentials/
+
+# Cloud provider files
+.aws/
+.gcp/
+.azure/
+
+# Terraform (if used in future)
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+
+# Kubernetes (if used in future)
+*.kubeconfig
+
+# Monitoring data
+prometheus_data/
+grafana_data/
+
+# Alembic
+# Keep migrations folder but ignore generated files if needed
+# backend/migrations/versions/*.pyc
+
+# Test files
+test_*.csv
+sample_*.csv
+test_data/
+
+# Upload directories
+uploads/
+temp/
+tmp/
+
+# Cache
+.cache/
+*.cache
+
+# Lock files (optional - some teams commit these)
+# package-lock.json
+# poetry.lock
+# Pipfile.lock
