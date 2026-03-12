@@ -59,7 +59,7 @@ async def get_resource_efficiency(
         # Fetch dynamic health metrics (Real-time Prometheus + DB)
         dynamic_metrics = []
         try:
-            dynamic_metrics = health_service.get_health_summary(db)
+            dynamic_metrics = health_service.get_health_summary(db, user_id=current_user.id)
         except Exception as e:
             logger.warning(f"Could not fetch dynamic health metrics: {e}")
 

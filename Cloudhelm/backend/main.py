@@ -39,20 +39,17 @@ except ImportError:
 # ────────────────────────────────────────────────────────────────────────────
 
 # Configure CORS
-# Support multiple origins for production
-allowed_origins = [settings.frontend_origin]
-
-# Add additional origins if specified
-if settings.app_env == "production":
-    # Allow both with and without trailing slash
-    if not settings.frontend_origin.endswith("/"):
-        allowed_origins.append(settings.frontend_origin + "/")
-    else:
-        allowed_origins.append(settings.frontend_origin.rstrip("/"))
+# Hardcoded for dev environment as requested to fix "Failed to fetch" issues
+allowed_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://0.0.0.0:5173",
+    settings.frontend_origin
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

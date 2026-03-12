@@ -19,7 +19,8 @@ class HealthService:
     def register_service(
         db: Session,
         service_name: str,
-        service_type: str
+        service_type: str,
+        user_id: int
     ) -> Service:
         """
         Register a new service for health monitoring.
@@ -34,7 +35,8 @@ class HealthService:
         """
         # Check if service already exists
         existing = db.query(Service).filter(
-            Service.service_name == service_name
+            Service.service_name == service_name,
+            Service.user_id == user_id
         ).first()
         
         if existing:
@@ -52,7 +54,8 @@ class HealthService:
             service_name=service_name,
             service_type=service_type,
             status='active',
-            last_seen=datetime.utcnow()
+            last_seen=datetime.utcnow(),
+            user_id=user_id
         )
         
         db.add(service)
@@ -75,7 +78,8 @@ class HealthService:
         memory_usage: float = 0.0,
         restart_count: int = 0,
         pod_count: int = 0,
-        timestamp: Optional[datetime] = None
+        timestamp: Optional[datetime] = None,
+        user_id: Optional[int] = None
     ) -> ServiceMetric:
         """
         Collect and store service health metrics.
@@ -101,10 +105,14 @@ class HealthService:
             timestamp = datetime.utcnow()
         
         # Check for existing metric at this timestamp
-        existing = db.query(ServiceMetric).filter(
+        query = db.query(ServiceMetric).filter(
             ServiceMetric.service_name == service_name,
             ServiceMetric.timestamp == timestamp
-        ).first()
+        )
+        if user_id:
+            query = query.filter(ServiceMetric.user_id == user_id)
+        
+        existing = query.first()
         
         if existing:
             # Update existing metric
@@ -134,7 +142,8 @@ class HealthService:
             cpu_usage=cpu_usage,
             memory_usage=memory_usage,
             restart_count=restart_count,
-            pod_count=pod_count
+            pod_count=pod_count,
+            user_id=user_id if user_id is not None else 0
         )
         
         db.add(metric)
@@ -228,7 +237,10 @@ class HealthService:
         else:
             # Get latest metric for each service
             # This is a simplified approach - in production, use window functions
-            services = db.query(Service).filter(Service.status == 'active').all()
+            query = db.query(Service).filter(Service.status == 'active')
+            if user_id:
+                query = query.filter(Service.user_id == user_id)
+            services = query.all()
             metrics = []
             
             for service in services:
@@ -356,7 +368,8 @@ class HealthService:
     def get_metrics_history(
         db: Session,
         service_name: str,
-        hours: int = 24
+        hours: int = 24,
+        user_id: Optional[int] = None
     ) -> List[ServiceMetric]:
         """
         Get historical metrics for a service.
@@ -371,10 +384,14 @@ class HealthService:
         """
         cutoff_time = datetime.utcnow() - timedelta(hours=hours)
         
-        metrics = db.query(ServiceMetric).filter(
+        query = db.query(ServiceMetric).filter(
             ServiceMetric.service_name == service_name,
             ServiceMetric.timestamp >= cutoff_time
-        ).order_by(ServiceMetric.timestamp).all()
+        )
+        if user_id:
+            query = query.filter(ServiceMetric.user_id == user_id)
+            
+        metrics = query.order_by(ServiceMetric.timestamp).all()
 
         if not metrics:
             # Generate fake history so charts aren't completely empty if it's a repository fallback

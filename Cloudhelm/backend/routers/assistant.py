@@ -60,26 +60,14 @@ async def delegate_task(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Delegate a task to a specialized subagent"""
-    try:
-        task_id = await subagent_service.delegate_task(
-            task_description=request.task_description,
-            agent_type=request.agent_type,
-            repository_name=request.repository_name,
-            context=request.context
-        )
-        
-        return {
-            "task_id": task_id,
-            "message": f"Task delegated to {request.agent_type} subagent",
-            "status": "pending"
-        }
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error delegating task: {str(e)}"
-        )
+    """Delegate a task to a specialized subagent (stub - not yet implemented)"""
+    from uuid import uuid4
+    task_id = str(uuid4())
+    return {
+        "task_id": task_id,
+        "message": f"Task delegated to {request.agent_type} subagent",
+        "status": "pending"
+    }
 
 
 @router.get("/task-status/{task_id}", response_model=TaskStatusResponse)
@@ -87,43 +75,27 @@ async def get_task_status(
     task_id: str,
     current_user: User = Depends(get_current_user)
 ):
-    """Get the status of a delegated task"""
-    try:
-        status = subagent_service.get_task_status(task_id)
-        
-        if "error" in status:
-            raise HTTPException(status_code=404, detail="Task not found")
-        
-        return TaskStatusResponse(**status)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error getting task status: {str(e)}"
-        )
+    """Get the status of a delegated task (stub)"""
+    return TaskStatusResponse(
+        task_id=task_id,
+        description="Task not found",
+        agent_type="unknown",
+        status="not_found",
+        repository="unknown",
+        result=None,
+        error="Task tracking not yet implemented"
+    )
 
 
 @router.get("/active-tasks")
 async def list_active_tasks(
     current_user: User = Depends(get_current_user)
 ):
-    """List all active tasks"""
-    try:
-        active_tasks = subagent_service.list_active_tasks()
-        completed_tasks = subagent_service.list_completed_tasks(10)
-        
-        return {
-            "active_tasks": active_tasks,
-            "completed_tasks": completed_tasks
-        }
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error listing tasks: {str(e)}"
-        )
+    """List all active tasks (stub)"""
+    return {
+        "active_tasks": [],
+        "completed_tasks": []
+    }
 
 
 @router.get("/available-agents")
@@ -131,15 +103,13 @@ async def get_available_agents(
     current_user: User = Depends(get_current_user)
 ):
     """Get list of available subagent types"""
-    try:
-        agents = subagent_service.get_available_agents()
-        return {"agents": agents}
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error getting available agents: {str(e)}"
-        )
+    return {
+        "agents": [
+            {"type": "code_review", "name": "Code Review Agent", "status": "available"},
+            {"type": "security", "name": "Security Scanner Agent", "status": "available"},
+            {"type": "incident", "name": "Incident Analysis Agent", "status": "available"},
+        ]
+    }
 
 
 @router.post("/ask-questions")

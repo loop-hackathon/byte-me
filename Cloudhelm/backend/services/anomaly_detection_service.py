@@ -59,7 +59,8 @@ class AnomalyDetectionService:
     def get_metric_features(
         db: Session,
         service_name: str,
-        hours: int = 24
+        hours: int = 24,
+        user_id: Optional[int] = None
     ) -> np.ndarray:
         """
         Extract feature vectors from service metrics.
@@ -74,10 +75,15 @@ class AnomalyDetectionService:
         """
         cutoff_time = datetime.utcnow() - timedelta(hours=hours)
         
-        metrics = db.query(ServiceMetric).filter(
+        
+        query = db.query(ServiceMetric).filter(
             ServiceMetric.service_name == service_name,
             ServiceMetric.timestamp >= cutoff_time
-        ).order_by(ServiceMetric.timestamp).all()
+        )
+        if user_id:
+            query = query.filter(ServiceMetric.user_id == user_id)
+            
+        metrics = query.order_by(ServiceMetric.timestamp).all()
         
         if not metrics:
             return np.array([])
@@ -99,7 +105,8 @@ class AnomalyDetectionService:
         self,
         db: Session,
         service_name: str,
-        hours: int = 24
+        hours: int = 24,
+        user_id: Optional[int] = None
     ) -> List[Dict]:
         """
         Detect anomalies in service metrics using ML models.
@@ -113,7 +120,7 @@ class AnomalyDetectionService:
             List of detected anomalies
         """
         # Get feature vectors
-        features = self.get_metric_features(db, service_name, hours)
+        features = self.get_metric_features(db, service_name, hours, user_id)
         
         if len(features) < 10:
             logger.warning(f"Insufficient data for anomaly detection: {len(features)} samples")
@@ -121,10 +128,14 @@ class AnomalyDetectionService:
         
         # Get corresponding metrics
         cutoff_time = datetime.utcnow() - timedelta(hours=hours)
-        metrics = db.query(ServiceMetric).filter(
+        query = db.query(ServiceMetric).filter(
             ServiceMetric.service_name == service_name,
             ServiceMetric.timestamp >= cutoff_time
-        ).order_by(ServiceMetric.timestamp).all()
+        )
+        if user_id:
+            query = query.filter(ServiceMetric.user_id == user_id)
+            
+        metrics = query.order_by(ServiceMetric.timestamp).all()
         
         anomalies = []
         
@@ -290,7 +301,8 @@ class AnomalyDetectionService:
     @staticmethod
     def store_anomaly(
         db: Session,
-        anomaly: Dict
+        anomaly: Dict,
+        user_id: int
     ) -> MetricsAnomaly:
         """
         Store detected anomaly in database.
@@ -306,7 +318,8 @@ class AnomalyDetectionService:
         existing = db.query(MetricsAnomaly).filter(
             MetricsAnomaly.service_name == anomaly['service_name'],
             MetricsAnomaly.timestamp == anomaly['timestamp'],
-            MetricsAnomaly.anomaly_type == anomaly['anomaly_type']
+            MetricsAnomaly.anomaly_type == anomaly['anomaly_type'],
+            MetricsAnomaly.user_id == user_id
         ).first()
         
         if existing:
@@ -321,7 +334,8 @@ class AnomalyDetectionService:
             severity=anomaly['severity'],
             anomaly_score=anomaly['anomaly_score'],
             affected_metrics=json.dumps(anomaly['affected_metrics']),
-            description=anomaly['description']
+            description=anomaly['description'],
+            user_id=user_id
         )
         
         db.add(anomaly_record)

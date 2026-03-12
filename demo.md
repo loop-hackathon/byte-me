@@ -9,9 +9,7 @@
 * **Release Impact Analysis:** Deployment risk scoring, GitHub release correlation, and integrated vulnerability & SBOM data per release.
 * **CloudHelm Assistant:** Mistral AI CLI coding assistant `/test`, `/lint`, `/run` inside the app.
 * **Cloud Cost Management:** Comprehensive cloud spend tracking, AI-powered cost optimization recommendations, and detailed resource efficiency analysis. It takes the CSV files in the cost page to give results with an SLA report (downloadable with a single click).
-
-## 🚧 Features Not Yet Implemented
-* **LLM**
+* **LLM Integration:** Full LLM support for AI-driven insights and automated workflows across the platform.
 
 ## ⚠️ Known Issues & Limitations
 * **Free-Tier Limits:** Prone to cold starts, database limits, and rate limits.

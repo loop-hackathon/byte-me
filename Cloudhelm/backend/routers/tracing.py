@@ -1,6 +1,9 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 import requests
 import os
+
+from backend.core.security import get_current_user
+from backend.models.user import User
 
 router = APIRouter(prefix="/tracing", tags=["tracing"])
 
@@ -11,7 +14,8 @@ TEMPO_URL = os.getenv("TEMPO_URL", "http://localhost:3200")
 @router.get("/traces")
 async def list_recent_traces(
     limit: int = Query(20, ge=1, le=100),
-    project: str = Query(None, description="Project identifier to filter traces by service.namespace")
+    project: str = Query(None, description="Project identifier to filter traces by service.namespace"),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Proxies a search request to Tempo to get the most recent traces,
@@ -39,7 +43,10 @@ async def list_recent_traces(
         return get_demo_traces()
 
 @router.get("/traces/{trace_id}")
-async def get_trace_details(trace_id: str):
+async def get_trace_details(
+    trace_id: str,
+    current_user: User = Depends(get_current_user)
+):
     """
     Proxies a request for a specific trace ID to Tempo or returns demo details.
     """

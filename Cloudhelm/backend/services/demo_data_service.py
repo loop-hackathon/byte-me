@@ -105,7 +105,8 @@ class DemoDataService:
         db: Session,
         hours: int = 24,
         services: Optional[List[str]] = None,
-        anomaly_rate: float = 0.05
+        anomaly_rate: float = 0.05,
+        user_id: Optional[int] = None
     ) -> Dict[str, int]:
         """
         Generate historical demo data for testing.
@@ -121,11 +122,11 @@ class DemoDataService:
         """
         if services is None:
             services = [
-                'api-gateway',
-                'user-service',
-                'payment-service',
-                'notification-service',
-                'analytics-service'
+                'nginx-ingress-controller',
+                'identity-auth-service',
+                'stripe-billing-service',
+                'sendgrid-mailer',
+                'keycloak-sso'
             ]
         
         # Register services
@@ -133,7 +134,8 @@ class DemoDataService:
             health_service.register_service(
                 db,
                 service_name=service_name,
-                service_type='microservice'
+                service_type='microservice',
+                user_id=user_id
             )
         
         # Generate metrics at 5-minute intervals
@@ -168,6 +170,7 @@ class DemoDataService:
                     db,
                     service_name=service_name,
                     timestamp=timestamp,
+                    user_id=user_id,
                     **metrics
                 )
                 

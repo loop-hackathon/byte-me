@@ -129,6 +129,7 @@ class Incident(Base):
     cost_changes = Column(String, nullable=True)  # Text description of cost impact
     ai_summary = Column(String, nullable=True)  # AI-generated markdown summary
     summary_generated_at = Column(Date, nullable=True)
+    user_id = Column(Integer, sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     
     __table_args__ = (
         Index('idx_incident_status_created', 'status', 'created_at'),

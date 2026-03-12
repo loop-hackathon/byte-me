@@ -106,7 +106,8 @@ def get_anomalies(
         
         # Build query
         query = db.query(MetricsAnomaly).filter(
-            MetricsAnomaly.timestamp >= cutoff_time
+            MetricsAnomaly.timestamp >= cutoff_time,
+            MetricsAnomaly.user_id == current_user.id
         )
         
         if service:
@@ -203,7 +204,7 @@ def get_metrics_history(
     Returns time-series data ordered by timestamp.
     """
     try:
-        metrics = health_service.get_metrics_history(db, service, hours)
+        metrics = health_service.get_metrics_history(db, service, hours, current_user.id)
         
         # Convert to response format
         response = []
@@ -243,7 +244,8 @@ def register_service(
         service = health_service.register_service(
             db,
             service_name=request.service_name,
-            service_type=request.service_type
+            service_type=request.service_type,
+            user_id=current_user.id
         )
         
         return ServiceResponse(
@@ -455,7 +457,8 @@ def generate_demo_data(
             db,
             hours=request.hours,
             services=request.services,
-            anomaly_rate=request.anomaly_rate
+            anomaly_rate=request.anomaly_rate,
+            user_id=current_user.id
         )
         
         return DemoDataResponse(
@@ -509,17 +512,17 @@ def seed_demo_health_data(
     try:
         # Register demo services
         demo_services = [
-            {"name": "api-gateway", "type": "microservice"},
-            {"name": "user-service", "type": "microservice"},
-            {"name": "payment-service", "type": "microservice"},
-            {"name": "notification-service", "type": "microservice"},
-            {"name": "auth-service", "type": "microservice"},
+            {"name": "nginx-ingress-controller", "type": "microservice"},
+            {"name": "identity-auth-service", "type": "microservice"},
+            {"name": "stripe-billing-service", "type": "microservice"},
+            {"name": "sendgrid-mailer", "type": "microservice"},
+            {"name": "keycloak-sso", "type": "microservice"},
         ]
         
         services_registered = 0
         for svc in demo_services:
             try:
-                health_service.register_service(svc["name"], svc["type"])
+                health_service.register_service(db, svc["name"], svc["type"], current_user.id)
                 services_registered += 1
             except Exception:
                 # Service might already exist
@@ -530,14 +533,15 @@ def seed_demo_health_data(
             db,
             hours=hours,
             services=[s["name"] for s in demo_services],
-            anomaly_rate=0.05  # 5% anomaly rate
+            anomaly_rate=0.05,  # 5% anomaly rate
+            user_id=current_user.id
         )
         
         # Run anomaly detection on all services
         anomalies_detected = 0
         for svc in demo_services:
             try:
-                anomalies = anomaly_detection_service.detect_anomalies(svc["name"])
+                anomalies = anomaly_detection_service.detect_anomalies(db, svc["name"], user_id=current_user.id)
                 anomalies_detected += len(anomalies)
             except Exception as e:
                 logger.warning(f"Could not detect anomalies for {svc['name']}: {e}")

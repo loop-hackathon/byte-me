@@ -260,42 +260,49 @@ class ApiClient {
     time_range?: string;
     environment?: string;
   }): Promise<KPISummary> {
-    const queryParams = new URLSearchParams();
-    if (params.time_range) queryParams.append('time_range', params.time_range);
-    if (params.environment) queryParams.append('environment', params.environment);
-
-    const cacheKey = `kpi-summary-${queryParams.toString()}`;
-    
-    return this.cachedFetch<KPISummary>(
-      `${API_BASE_URL}/api/overview/kpi-summary?${queryParams}`,
-      {
-        headers: this.getHeaders(),
-        credentials: 'include',
-      },
-      cacheKey,
-      5 * 60 * 1000 // 5 minutes
-    );
+    // Hardcoded for direct display as requested
+    return {
+      total_cloud_spend: 156340.0,
+      spend_vs_budget: { percentage: -8.2, status: 'under' },
+      forecasted_month_end: 142800.0,
+      active_anomalies: 7,
+      potential_savings: 27500.0,
+      open_incidents: 2,
+      availability: 99.94,
+      error_rate: 0.08,
+      deployments_count: 34,
+      teams_at_risk: 3,
+      deltas: {
+        spend_delta: '+12.5%',
+        anomalies_delta: '-2',
+        incidents_delta: '-1',
+        deployments_delta: '+6'
+      }
+    };
   }
 
   async getCostTimeSeries(params: {
     time_range?: string;
     environment?: string;
   }): Promise<CostTimeSeries> {
-    const queryParams = new URLSearchParams();
-    if (params.time_range) queryParams.append('time_range', params.time_range);
-    if (params.environment) queryParams.append('environment', params.environment);
-
-    const cacheKey = `cost-timeseries-${queryParams.toString()}`;
-
-    return this.cachedFetch<CostTimeSeries>(
-      `${API_BASE_URL}/api/overview/cost-timeseries?${queryParams}`,
-      {
-        headers: this.getHeaders(),
-        credentials: 'include',
-      },
-      cacheKey,
-      10 * 60 * 1000 // 10 minutes
-    );
+    // Hardcoded for direct display as requested
+    const series = [];
+    const now = new Date();
+    for (let i = 0; i < 30; i++) {
+        const d = new Date();
+        d.setDate(now.getDate() - (29 - i));
+        series.push({
+            date: d.toISOString().split('T')[0],
+            cost: 5200 + Math.random() * 1000 + i * 20,
+            forecast: 5200 + i * 20,
+            anomaly: Math.random() < 0.1
+        });
+    }
+    return {
+      series,
+      total_cost: 156340.0,
+      avg_daily_cost: 5211.33
+    };
   }
 
   async getSpendByTeam(params: {
@@ -303,91 +310,132 @@ class ApiClient {
     environment?: string;
     limit?: number;
   }): Promise<SpendByTeam> {
-    const queryParams = new URLSearchParams();
-    if (params.time_range) queryParams.append('time_range', params.time_range);
-    if (params.environment) queryParams.append('environment', params.environment);
-    if (params.limit) queryParams.append('limit', params.limit.toString());
-
-    const cacheKey = `spend-by-team-${queryParams.toString()}`;
-
-    return this.cachedFetch<SpendByTeam>(
-      `${API_BASE_URL}/api/overview/spend-by-team?${queryParams}`,
-      {
-        headers: this.getHeaders(),
-        credentials: 'include',
-      },
-      cacheKey,
-      10 * 60 * 1000 // 10 minutes
-    );
+    // Hardcoded for direct display as requested
+    return {
+      breakdown: [
+        { team: 'Platform Engineering', spend: 45200.0 },
+        { team: 'Data Science', spend: 38600.0 },
+        { team: 'Backend Services', spend: 31400.0 },
+        { team: 'ML Infrastructure', spend: 24800.0 },
+        { team: 'DevOps & SRE', spend: 16340.0 }
+      ],
+      total_spend: 156340.0
+    };
   }
 
   async getSpendByProvider(params: {
     time_range?: string;
     environment?: string;
   }): Promise<SpendByProvider> {
-    const queryParams = new URLSearchParams();
-    if (params.time_range) queryParams.append('time_range', params.time_range);
-    if (params.environment) queryParams.append('environment', params.environment);
-
-    const cacheKey = `spend-by-provider-${queryParams.toString()}`;
-
-    return this.cachedFetch<SpendByProvider>(
-      `${API_BASE_URL}/api/overview/spend-by-provider?${queryParams}`,
-      {
-        headers: this.getHeaders(),
-        credentials: 'include',
-      },
-      cacheKey,
-      10 * 60 * 1000 // 10 minutes
-    );
+    // Hardcoded for direct display as requested
+    return {
+      breakdown: [
+        { provider: 'AWS', spend: 94500.0, percentage: 60.4, color: '#FF9900' },
+        { provider: 'GCP', spend: 42300.0, percentage: 27.1, color: '#4285F4' },
+        { provider: 'AZURE', spend: 19540.0, percentage: 12.5, color: '#0078D4' }
+      ],
+      total_spend: 156340.0
+    };
   }
 
   async getOptimizationOpportunities(limit?: number): Promise<OptimizationOpportunities> {
-    const queryParams = new URLSearchParams();
-    if (limit) queryParams.append('limit', limit.toString());
-
-    const cacheKey = `optimization-opportunities-${queryParams.toString()}`;
-
-    return this.cachedFetch<OptimizationOpportunities>(
-      `${API_BASE_URL}/api/overview/optimization-opportunities?${queryParams}`,
-      {
-        headers: this.getHeaders(),
-        credentials: 'include',
-      },
-      cacheKey,
-      30 * 60 * 1000 // 30 minutes (expensive computation)
-    );
+    // Hardcoded for direct display as requested
+    return {
+      opportunities: [
+        {
+          resource: 'EC2 i3.8xlarge (3 instances)',
+          estimated_savings: 12400.0,
+          type: 'Over-provisioned',
+          recommended_action: 'Downsize to i3.4xlarge',
+          service: 'EC2',
+          team: 'Engineering'
+        },
+        {
+          resource: 'RDS db.r5.4xlarge',
+          estimated_savings: 8200.0,
+          type: 'Idle',
+          recommended_action: 'Stop or delete unused DB',
+          service: 'RDS',
+          team: 'Data Science'
+        },
+        {
+          resource: 'S3 Glacier Storage',
+          estimated_savings: 4800.0,
+          type: 'Unused',
+          recommended_action: 'Delete old backups',
+          service: 'S3',
+          team: 'DevOps'
+        },
+        {
+          resource: 'EBS Volumes (unattached)',
+          estimated_savings: 2100.0,
+          type: 'Idle',
+          recommended_action: 'Delete unattached volumes',
+          service: 'EBS',
+          team: 'Engineering'
+        }
+      ],
+      total_potential_savings: 27500.0
+    };
   }
 
   async getReliabilityMetrics(time_range?: string): Promise<ReliabilityMetrics> {
-    const queryParams = new URLSearchParams();
-    if (time_range) queryParams.append('time_range', time_range);
-
-    const cacheKey = `reliability-metrics-${queryParams.toString()}`;
-
-    return this.cachedFetch<ReliabilityMetrics>(
-      `${API_BASE_URL}/api/overview/reliability-metrics?${queryParams}`,
-      {
-        headers: this.getHeaders(),
-        credentials: 'include',
-      },
-      cacheKey,
-      5 * 60 * 1000 // 5 minutes
-    );
+    // Hardcoded for direct display as requested
+    return {
+      open_incidents: [
+        {
+          id: 1001,
+          title: 'High latency on stripe-billing-service',
+          status: 'investigating',
+          severity: 'high',
+          duration: '3h',
+          service: 'stripe-billing-service',
+          team: 'Backend Services'
+        },
+        {
+          id: 1002,
+          title: 'Memory leak in tensorflow-inference-api',
+          status: 'open',
+          severity: 'medium',
+          duration: '1d',
+          service: 'tensorflow-inference-api',
+          team: 'ML Infrastructure'
+        }
+      ],
+      availability: { percentage: 99.94, delta: '+0.02%', trend: 'positive' },
+      error_rate: { percentage: 0.08, delta: '-0.03%', trend: 'positive' },
+      mttr: { average: '45m', median: '30m' }
+    };
   }
 
   async getDeploymentStats(): Promise<DeploymentStats> {
-    const cacheKey = 'deployment-stats';
-
-    return this.cachedFetch<DeploymentStats>(
-      `${API_BASE_URL}/api/overview/deployment-stats`,
-      {
-        headers: this.getHeaders(),
-        credentials: 'include',
-      },
-      cacheKey,
-      5 * 60 * 1000 // 5 minutes
-    );
+    // Hardcoded for direct display as requested
+    return {
+      total_deployments: 34,
+      successful: 31,
+      failed: 3,
+      delta: '+6',
+      recent_deployments: [
+        {
+            id: 5001,
+            service: 'nginx-ingress-controller',
+            environment: 'prod',
+            status: 'success',
+            deployed_at: new Date(Date.now() - 3600000 * 2).toISOString(),
+            deployed_by: 'ci-pipeline',
+            version: 'v2.14.3'
+        },
+        {
+            id: 5002,
+            service: 'identity-auth-service',
+            environment: 'prod',
+            status: 'success',
+            deployed_at: new Date(Date.now() - 3600000 * 6).toISOString(),
+            deployed_by: 'ci-pipeline',
+            version: 'v1.8.0'
+        }
+      ]
+    };
   }
 
   // Release endpoints
@@ -627,11 +675,29 @@ class ApiClient {
   }
 
   async getEfficiencyAnalysis(): Promise<any> {
-    const response = await fetch(`${API_BASE_URL}/efficiency/resources`, {
-      headers: this.getHeaders(),
-      credentials: 'include',
-    });
-    return this.handleResponse(response);
+    // Hardcoded for direct display as requested
+    return {
+      "scatter_data": [
+        {"service": "nginx-ingress-controller", "cpu_pct": 15, "cost": 2500, "efficiency": 0.32},
+        {"service": "identity-auth-service", "cpu_pct": 45, "cost": 1200, "efficiency": 0.85},
+        {"service": "stripe-billing-service", "cpu_pct": 78, "cost": 3400, "efficiency": 0.92},
+        {"service": "redis-session-cache", "cpu_pct": 12, "cost": 800, "efficiency": 0.45},
+        {"service": "tensorflow-inference-api", "cpu_pct": 65, "cost": 5600, "efficiency": 0.72},
+        {"service": "postgres-primary-rds", "cpu_pct": 52, "cost": 1850, "efficiency": 0.78},
+        {"service": "elasticsearch-logging", "cpu_pct": 38, "cost": 2200, "efficiency": 0.61},
+        {"service": "kafka-event-broker", "cpu_pct": 71, "cost": 1600, "efficiency": 0.88},
+        {"service": "sendgrid-mailer", "cpu_pct": 8, "cost": 450, "efficiency": 0.35},
+        {"service": "cloudfront-cdn", "cpu_pct": 22, "cost": 980, "efficiency": 0.55}
+      ],
+      "recommendations": [
+        "Right-size nginx-ingress-controller: save $1,200/mo (CPU at 15%, overpaying)",
+        "Shutdown idle sendgrid-mailer instances during off-peak (CPU at 8%)",
+        "Consolidate redis-session-cache into fewer m5.large nodes",
+        "Review tensorflow-inference-api: high cost at $5,600/mo — consider spot instances",
+        "Downgrade elasticsearch-logging to t3.medium (38% avg CPU)"
+      ],
+      "avg_efficiency": 0.64
+    };
   }
 
   // Health Monitoring endpoints

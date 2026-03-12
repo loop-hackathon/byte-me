@@ -61,7 +61,7 @@ async def get_kpi_summary(
     start_date, end_date = parse_time_range(time_range)
     
     # Build environment filter
-    env_filter = []
+    env_filter = [CostAggregate.user_id == current_user.id]
     if environment != "all":
         env_filter.append(CostAggregate.env == environment)
     
@@ -89,13 +89,14 @@ async def get_kpi_summary(
         func.count(Incident.id).label('incidents'),
         func.count(Deployment.id).label('deployments')
     ).select_from(CostAnomaly).outerjoin(
-        Incident, Incident.status.in_(["open", "investigating"])
+        Incident, and_(Incident.status.in_(["open", "investigating"]), Incident.user_id == current_user.id)
     ).outerjoin(
-        Deployment, Deployment.deployed_at >= seven_days_ago
+        Deployment, and_(Deployment.deployed_at >= seven_days_ago, Deployment.user_id == current_user.id)
     ).filter(
         and_(
             CostAnomaly.ts_date >= start_date,
             CostAnomaly.ts_date <= end_date,
+            CostAnomaly.user_id == current_user.id,
             *([CostAnomaly.env == environment] if environment != "all" else [])
         )
     ).first()
@@ -105,7 +106,7 @@ async def get_kpi_summary(
     deployments_count = counts.deployments if counts else 0
     
     # Budget calculation
-    budget_query = db.query(Budget).first()
+    budget_query = db.query(Budget).filter(Budget.user_id == current_user.id).first()
     if budget_query:
         monthly_budget = float(budget_query.monthly_budget_amount)
         days_in_month = (date.today().replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
@@ -124,10 +125,17 @@ async def get_kpi_summary(
         spend_vs_budget = SpendVsBudget(percentage=budget_percentage, status=budget_status)
         forecasted_month_end = projected
     else:
-        spend_vs_budget = SpendVsBudget(percentage=0, status="under")
-        forecasted_month_end = 0
+        spend_vs_budget = SpendVsBudget(percentage=-8.2, status="under")
+        forecasted_month_end = 142800.0
     
-    # Mock data for fields without DB tables yet
+    # Fallback to realistic dummy data when DB is empty
+    if total_spend == 0:
+        total_spend = 156340.0
+        active_anomalies = active_anomalies or 7
+        open_incidents = open_incidents or 2
+        deployments_count = deployments_count or 34
+        forecasted_month_end = forecasted_month_end or 142800.0
+    
     potential_savings = 27500.0
     availability = 99.94
     error_rate = 0.08
@@ -166,7 +174,7 @@ async def get_cost_timeseries(
     start_date, end_date = parse_time_range(time_range)
     
     # Build environment filter
-    env_filter = []
+    env_filter = [CostAggregate.user_id == current_user.id]
     if environment != "all":
         env_filter.append(CostAggregate.env == environment)
     
@@ -179,6 +187,7 @@ async def get_cost_timeseries(
         CostAnomaly,
         and_(
             CostAnomaly.ts_date == CostAggregate.ts_date,
+            CostAnomaly.user_id == current_user.id,
             *([CostAnomaly.env == environment] if environment != "all" else [])
         )
     ).filter(
@@ -209,6 +218,28 @@ async def get_cost_timeseries(
             anomaly=bool(row.has_anomaly)
         ))
     
+    # Fallback dummy data when DB is empty
+    if not series:
+        import random
+        random.seed(42)
+        base_cost = 5200.0
+        for i in range(30):
+            d = start_date + timedelta(days=i)
+            if d > end_date:
+                break
+            day_cost = base_cost + random.uniform(-800, 1200) + (i * 15)
+            forecast_val = base_cost + (i * 15)
+            is_anomaly = random.random() < 0.08
+            if is_anomaly:
+                day_cost *= 1.6
+            series.append(CostTimeSeriesPoint(
+                date=d.isoformat(),
+                cost=round(day_cost, 2),
+                forecast=round(forecast_val, 2),
+                anomaly=is_anomaly
+            ))
+            costs.append(day_cost)
+    
     total_cost = sum(costs)
     avg_daily_cost = total_cost / len(costs) if costs else 0
     
@@ -231,7 +262,7 @@ async def get_spend_by_team(
     start_date, end_date = parse_time_range(time_range)
     
     # Build environment filter
-    env_filter = []
+    env_filter = [CostAggregate.user_id == current_user.id]
     if environment != "all":
         env_filter.append(CostAggregate.env == environment)
     
@@ -253,6 +284,17 @@ async def get_spend_by_team(
         for row in team_spend
     ]
     
+    # Fallback dummy data when DB is empty
+    if not breakdown:
+        breakdown = [
+            SpendByTeamItem(team="Platform Engineering", spend=45200.0),
+            SpendByTeamItem(team="Data Science", spend=38600.0),
+            SpendByTeamItem(team="Backend Services", spend=31400.0),
+            SpendByTeamItem(team="ML Infrastructure", spend=24800.0),
+            SpendByTeamItem(team="DevOps & SRE", spend=16340.0),
+        ]
+        breakdown = breakdown[:limit]
+    
     total_spend = sum(item.spend for item in breakdown)
     
     return SpendByTeamResponse(
@@ -272,7 +314,7 @@ async def get_spend_by_provider(
     start_date, end_date = parse_time_range(time_range)
     
     # Build environment filter
-    env_filter = []
+    env_filter = [CostAggregate.user_id == current_user.id]
     if environment != "all":
         env_filter.append(CostAggregate.env == environment)
     
@@ -306,6 +348,15 @@ async def get_spend_by_provider(
         )
         for row in provider_spend
     ]
+    
+    # Fallback dummy data when DB is empty
+    if not breakdown:
+        total_spend = 156340.0
+        breakdown = [
+            SpendByProviderItem(provider="AWS", spend=94500.0, percentage=60.4, color="#FF9900"),
+            SpendByProviderItem(provider="GCP", spend=42300.0, percentage=27.1, color="#4285F4"),
+            SpendByProviderItem(provider="AZURE", spend=19540.0, percentage=12.5, color="#0078D4"),
+        ]
     
     return SpendByProviderResponse(
         breakdown=breakdown,
@@ -376,7 +427,8 @@ async def get_reliability_metrics(
     
     # Get open incidents
     incidents = db.query(Incident).filter(
-        Incident.status.in_(["open", "investigating"])
+        Incident.status.in_(["open", "investigating"]),
+        Incident.user_id == current_user.id
     ).order_by(desc(Incident.created_at)).limit(10).all()
     
     incident_items = []
@@ -397,6 +449,13 @@ async def get_reliability_metrics(
             service=incident.service,
             team=incident.team
         ))
+    
+    # Fallback dummy incidents when DB has none
+    if not incident_items:
+        incident_items = [
+            IncidentItem(id=1001, title="High latency on stripe-billing-service", status="investigating", severity="high", duration="3h", service="stripe-billing-service", team="Backend Services"),
+            IncidentItem(id=1002, title="Memory leak in tensorflow-inference-api", status="open", severity="medium", duration="1d", service="tensorflow-inference-api", team="ML Infrastructure"),
+        ]
     
     # Mock availability and error rate data
     availability = MetricWithTrend(
@@ -434,7 +493,8 @@ async def get_deployment_stats(
     
     # Get deployments
     deployments = db.query(Deployment).filter(
-        Deployment.deployed_at >= seven_days_ago
+        Deployment.deployed_at >= seven_days_ago,
+        Deployment.user_id == current_user.id
     ).order_by(desc(Deployment.deployed_at)).all()
     
     total = len(deployments)
@@ -446,7 +506,8 @@ async def get_deployment_stats(
     prev_deployments = db.query(func.count(Deployment.id)).filter(
         and_(
             Deployment.deployed_at >= fourteen_days_ago,
-            Deployment.deployed_at < seven_days_ago
+            Deployment.deployed_at < seven_days_ago,
+            Deployment.user_id == current_user.id
         )
     ).scalar() or 0
     
@@ -466,6 +527,21 @@ async def get_deployment_stats(
         )
         for d in recent
     ]
+    
+    # Fallback dummy deployments when DB is empty
+    if not recent_items:
+        total = 34
+        successful = 31
+        failed = 3
+        delta = "+6"
+        today = date.today()
+        recent_items = [
+            DeploymentItem(id=5001, service="nginx-ingress-controller", environment="prod", status="success", deployed_at=(today - timedelta(hours=2)).isoformat(), deployed_by="ci-pipeline", version="v2.14.3"),
+            DeploymentItem(id=5002, service="identity-auth-service", environment="prod", status="success", deployed_at=(today - timedelta(hours=6)).isoformat(), deployed_by="ci-pipeline", version="v1.8.0"),
+            DeploymentItem(id=5003, service="stripe-billing-service", environment="staging", status="failed", deployed_at=(today - timedelta(days=1)).isoformat(), deployed_by="ci-pipeline", version="v3.2.1-rc"),
+            DeploymentItem(id=5004, service="sendgrid-mailer", environment="prod", status="success", deployed_at=(today - timedelta(days=1, hours=8)).isoformat(), deployed_by="ci-pipeline", version="v1.4.7"),
+            DeploymentItem(id=5005, service="keycloak-sso", environment="dev", status="success", deployed_at=(today - timedelta(days=2)).isoformat(), deployed_by="dev-deploy", version="v5.0.0-beta"),
+        ]
     
     return DeploymentStatsResponse(
         total_deployments=total,

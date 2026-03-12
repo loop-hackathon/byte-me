@@ -143,16 +143,23 @@ class EfficiencyService:
     def _get_demo_data():
         return {
             "scatter_data": [
-                {"service": "Prod-API", "cpu_pct": 15, "cost": 2500, "efficiency": 0.32},
-                {"service": "Auth-SVC", "cpu_pct": 45, "cost": 1200, "efficiency": 0.85},
-                {"service": "Data-Worker", "cpu_pct": 78, "cost": 3400, "efficiency": 0.92},
-                {"service": "Cache-Layer", "cpu_pct": 12, "cost": 800, "efficiency": 0.45},
-                {"service": "ML-Inference", "cpu_pct": 65, "cost": 5600, "efficiency": 0.72}
+                {"service": "nginx-ingress-controller", "cpu_pct": 15, "cost": 2500, "efficiency": 0.32},
+                {"service": "identity-auth-service", "cpu_pct": 45, "cost": 1200, "efficiency": 0.85},
+                {"service": "stripe-billing-service", "cpu_pct": 78, "cost": 3400, "efficiency": 0.92},
+                {"service": "redis-session-cache", "cpu_pct": 12, "cost": 800, "efficiency": 0.45},
+                {"service": "tensorflow-inference-api", "cpu_pct": 65, "cost": 5600, "efficiency": 0.72},
+                {"service": "postgres-primary-rds", "cpu_pct": 52, "cost": 1850, "efficiency": 0.78},
+                {"service": "elasticsearch-logging", "cpu_pct": 38, "cost": 2200, "efficiency": 0.61},
+                {"service": "kafka-event-broker", "cpu_pct": 71, "cost": 1600, "efficiency": 0.88},
+                {"service": "sendgrid-mailer", "cpu_pct": 8, "cost": 450, "efficiency": 0.35},
+                {"service": "cloudfront-cdn", "cpu_pct": 22, "cost": 980, "efficiency": 0.55},
             ],
             "recommendations": [
-                "Right-size Prod-API: save $1,200/mo",
-                "Consolidate Cache-Layer instances",
-                "Review ML-Inference instance types"
+                "Right-size nginx-ingress-controller: save $1,200/mo (CPU at 15%, overpaying)",
+                "Shutdown idle sendgrid-mailer instances during off-peak (CPU at 8%)",
+                "Consolidate redis-session-cache into fewer m5.large nodes",
+                "Review tensorflow-inference-api: high cost at $5,600/mo — consider spot instances",
+                "Downgrade elasticsearch-logging to t3.medium (38% avg CPU)"
             ],
-            "avg_efficiency": 0.65
+            "avg_efficiency": 0.64
         }

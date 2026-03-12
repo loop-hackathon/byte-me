@@ -25,9 +25,9 @@ class IncidentService:
         self,
         db: Session,
         status: Optional[str] = None,
-        severity: Optional[str] = None,
         service: Optional[str] = None,
-        limit: int = 100
+        limit: int = 100,
+        user_id: Optional[int] = None
     ) -> List[Incident]:
         """
         List incidents with optional filters.
@@ -44,6 +44,9 @@ class IncidentService:
         """
         query = db.query(Incident)
         
+        if user_id:
+            query = query.filter(Incident.user_id == user_id)
+            
         if status:
             query = query.filter(Incident.status == status)
         if severity:
@@ -54,15 +57,21 @@ class IncidentService:
         incidents = query.order_by(desc(Incident.created_at)).limit(limit).all()
         return incidents
     
-    def get_incident(self, db: Session, incident_id: int) -> Optional[Incident]:
+    def get_incident(self, db: Session, incident_id: int, user_id: Optional[int] = None) -> Optional[Incident]:
         """Get incident by ID"""
-        return db.query(Incident).filter(Incident.id == incident_id).first()
+        query = db.query(Incident).filter(Incident.id == incident_id)
+        if user_id:
+            query = query.filter(Incident.user_id == user_id)
+        return query.first()
     
-    def get_incident_by_incident_id(self, db: Session, incident_id: str) -> Optional[Incident]:
+    def get_incident_by_incident_id(self, db: Session, incident_id: str, user_id: Optional[int] = None) -> Optional[Incident]:
         """Get incident by incident_id string (e.g., INC-2024-001)"""
-        return db.query(Incident).filter(Incident.incident_id == incident_id).first()
+        query = db.query(Incident).filter(Incident.incident_id == incident_id)
+        if user_id:
+            query = query.filter(Incident.user_id == user_id)
+        return query.first()
     
-    def create_incident(self, db: Session, incident_data: IncidentCreate) -> Incident:
+    def create_incident(self, db: Session, incident_data: IncidentCreate, user_id: int) -> Incident:
         """
         Create a new incident.
         
@@ -86,7 +95,8 @@ class IncidentService:
             recent_releases=incident_data.recent_releases,
             metrics_summary=incident_data.metrics_summary,
             cost_changes=incident_data.cost_changes,
-            created_at=date.today()
+            created_at=date.today(),
+            user_id=user_id
         )
         
         db.add(incident)
@@ -100,7 +110,8 @@ class IncidentService:
         self,
         db: Session,
         incident_id: int,
-        incident_data: IncidentUpdate
+        incident_data: IncidentUpdate,
+        user_id: Optional[int] = None
     ) -> Optional[Incident]:
         """
         Update an existing incident.
@@ -113,7 +124,7 @@ class IncidentService:
         Returns:
             Updated incident or None if not found
         """
-        incident = self.get_incident(db, incident_id)
+        incident = self.get_incident(db, incident_id, user_id)
         if not incident:
             return None
         
@@ -128,7 +139,7 @@ class IncidentService:
         logger.info(f"Updated incident {incident.incident_id}")
         return incident
     
-    def delete_incident(self, db: Session, incident_id: int) -> bool:
+    def delete_incident(self, db: Session, incident_id: int, user_id: Optional[int] = None) -> bool:
         """
         Delete an incident.
         
@@ -139,7 +150,7 @@ class IncidentService:
         Returns:
             True if deleted, False if not found
         """
-        incident = self.get_incident(db, incident_id)
+        incident = self.get_incident(db, incident_id, user_id)
         if not incident:
             return False
         
@@ -149,7 +160,7 @@ class IncidentService:
         logger.info(f"Deleted incident {incident.incident_id}")
         return True
     
-    def generate_ai_summary(self, db: Session, incident_id: int) -> Optional[str]:
+    def generate_ai_summary(self, db: Session, incident_id: int, user_id: Optional[int] = None) -> Optional[str]:
         """
         Generate AI summary for an incident.
         
@@ -160,7 +171,7 @@ class IncidentService:
         Returns:
             Generated summary or None if generation fails
         """
-        incident = self.get_incident(db, incident_id)
+        incident = self.get_incident(db, incident_id, user_id)
         if not incident:
             logger.error(f"Incident {incident_id} not found")
             return None

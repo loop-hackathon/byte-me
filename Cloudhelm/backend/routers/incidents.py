@@ -50,7 +50,8 @@ def list_incidents(
             status=status,
             severity=severity,
             service=service,
-            limit=limit
+            limit=limit,
+            user_id=current_user.id
         )
         return incidents
     except Exception as e:
@@ -65,7 +66,7 @@ def get_incident(
     current_user: User = Depends(get_current_user)
 ):
     """Get incident by ID"""
-    incident = incident_service.get_incident(db, incident_id)
+    incident = incident_service.get_incident(db, incident_id, user_id=current_user.id)
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
     return incident
@@ -85,14 +86,14 @@ def create_incident(
     """
     try:
         # Check if incident_id already exists
-        existing = incident_service.get_incident_by_incident_id(db, incident_data.incident_id)
+        existing = incident_service.get_incident_by_incident_id(db, incident_data.incident_id, user_id=current_user.id)
         if existing:
             raise HTTPException(
                 status_code=400,
                 detail=f"Incident with ID {incident_data.incident_id} already exists"
             )
         
-        incident = incident_service.create_incident(db, incident_data)
+        incident = incident_service.create_incident(db, incident_data, user_id=current_user.id)
         return incident
     except HTTPException:
         raise
@@ -110,7 +111,7 @@ def update_incident(
 ):
     """Update an existing incident"""
     try:
-        incident = incident_service.update_incident(db, incident_id, incident_data)
+        incident = incident_service.update_incident(db, incident_id, incident_data, user_id=current_user.id)
         if not incident:
             raise HTTPException(status_code=404, detail="Incident not found")
         return incident
@@ -129,7 +130,7 @@ def delete_incident(
 ):
     """Delete an incident"""
     try:
-        success = incident_service.delete_incident(db, incident_id)
+        success = incident_service.delete_incident(db, incident_id, user_id=current_user.id)
         if not success:
             raise HTTPException(status_code=404, detail="Incident not found")
         return None
@@ -162,12 +163,12 @@ def generate_incident_summary(
     - Recommended Actions
     """
     try:
-        incident = incident_service.get_incident(db, incident_id)
+        incident = incident_service.get_incident(db, incident_id, user_id=current_user.id)
         if not incident:
             raise HTTPException(status_code=404, detail="Incident not found")
         
         # Generate AI summary
-        summary = incident_service.generate_ai_summary(db, incident_id)
+        summary = incident_service.generate_ai_summary(db, incident_id, user_id=current_user.id)
         
         if not summary:
             raise HTTPException(
@@ -201,7 +202,7 @@ def get_incident_summary(
     Returns the cached summary if available, or null if not yet generated.
     Use POST /incidents/{id}/generate-summary to generate a new summary.
     """
-    incident = incident_service.get_incident(db, incident_id)
+    incident = incident_service.get_incident(db, incident_id, user_id=current_user.id)
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
     
