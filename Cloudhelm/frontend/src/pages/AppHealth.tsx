@@ -10,6 +10,7 @@ import {
   PieChart, Pie, Cell, BarChart, Bar
 } from 'recharts';
 import { api } from '../lib/api';
+import { TracingView } from '../components/TracingView';
 import type { 
   ServiceHealth, Anomaly, MetricHistory,
   Container as DockerContainer, Pod, ClusterHealth,
@@ -75,7 +76,6 @@ export default function AppHealth() {
   const [selectedService, setSelectedService] = useState<string | null>(null);
   const [metricsHistory, setMetricsHistory] = useState<MetricHistory[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [seeding, setSeeding] = useState(false);
   const [activeTab, setActiveTab] = useState<'services' | 'anomalies' | 'infrastructure' | 'feature1'>('services');
 
   useEffect(() => {
@@ -139,20 +139,6 @@ export default function AppHealth() {
     }
   };
 
-  const handleSeedData = async () => {
-    try {
-      setSeeding(true);
-      await api.seedHealthData(24);
-      await loadAllData();
-      alert('Demo data seeded successfully!');
-    } catch (error) {
-      console.error('Failed to seed data:', error);
-      alert('Failed to seed data. Check console for details.');
-    } finally {
-      setSeeding(false);
-    }
-  };
-
   const getOverallHealth = () => {
     if (services.length === 0) return { score: 0, status: 'unknown' };
     const avgScore = services.reduce((sum, s) => sum + s.health_score, 0) / services.length;
@@ -197,14 +183,6 @@ export default function AppHealth() {
           >
             <Zap className={`w-4 h-4 inline mr-2 ${autoRefresh ? 'text-cyan-400' : 'text-slate-500'}`} />
             Auto-refresh {autoRefresh ? 'ON' : 'OFF'}
-          </button>
-          <button
-            onClick={handleSeedData}
-            disabled={seeding}
-            className="px-4 py-2 bg-slate-800/60 border border-slate-700 rounded-lg text-sm text-slate-300 hover:bg-slate-800 hover:border-cyan-500/50 transition-all disabled:opacity-50"
-          >
-            <Database className={`w-4 h-4 inline mr-2 ${seeding ? 'animate-pulse' : ''}`} />
-            {seeding ? 'Seeding...' : 'Seed Demo Data'}
           </button>
           <button
             onClick={() => loadAllData()}
@@ -304,15 +282,7 @@ export default function AppHealth() {
             <div className="bg-slate-900/60 backdrop-blur-lg border border-slate-700 rounded-xl p-12 text-center">
               <Activity className="w-16 h-16 text-slate-600 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-slate-300 mb-2">No Services Registered</h3>
-              <p className="text-slate-400 mb-4">Click "Seed Demo Data" to generate sample services</p>
-              <button
-                onClick={handleSeedData}
-                disabled={seeding}
-                className="px-6 py-2 bg-cyan-500/10 border border-cyan-500/30 rounded-lg text-cyan-400 hover:bg-cyan-500/20 transition-all"
-              >
-                <Database className="w-4 h-4 inline mr-2" />
-                Seed Demo Data
-              </button>
+              <p className="text-slate-400">Run your services to see health metrics here.</p>
             </div>
           ) : (
             <>
@@ -343,6 +313,8 @@ export default function AppHealth() {
               )}
             </>
           )}
+
+          <TracingView />
         </div>
       )}
 
