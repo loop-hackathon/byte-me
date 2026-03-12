@@ -77,15 +77,24 @@ class ReleaseService:
     @staticmethod
     def create_release(db: Session, release_data: dict) -> Release:
         """Create a new release"""
-        # Check if release already exists (by workflow_run_id)
+        # Check if release already exists (by workflow_run_id or commit)
+        existing = None
         if release_data.get("workflow_run_id"):
             existing = db.query(Release).filter(
                 Release.workflow_run_id == release_data["workflow_run_id"]
             ).first()
+        elif release_data.get("commit"):
+            existing = db.query(Release).filter(
+                Release.repo_id == release_data["repo_id"],
+                Release.commit == release_data["commit"]
+            ).first()
             
-            if existing:
-                logger.info(f"Release already exists: {existing.id}")
-                return existing
+        if existing:
+            # Update existing release if needed (e.g. status)
+            if release_data.get("status"):
+                existing.status = release_data["status"]
+                db.commit()
+            return existing
         
         # Calculate risk score
         release_data["risk_score"] = ReleaseService.calculate_risk_score(release_data)
@@ -314,6 +323,14 @@ class ReleaseService:
             )
 
             if scan_result is not None:
+                # Update release in database with security metrics and blended score
+                metrics = scan_result["security_metrics"]
+                release.critical_vulns = metrics.get("critical", 0)
+                release.high_vulns = metrics.get("high", 0)
+                release.medium_vulns = metrics.get("medium", 0)
+                release.low_vulns = metrics.get("low", 0)
+                release.unknown_vulns = metrics.get("unknown", 0)
+
                 security_impact = {
                     "risk_score": scan_result["risk_score"],
                     "security_metrics": scan_result["security_metrics"],
@@ -328,8 +345,14 @@ class ReleaseService:
                 )
                 blended_risk_score = min(blended_score, 100.0)
                 blended_risk_level = ReleaseService.get_risk_level(blended_risk_score)
+                
+                # Persist the blended score
+                release.risk_score = blended_risk_score
+                release.risk_level = blended_risk_level
+                db.commit()
+                
                 logger.info(
-                    "Blended risk score: %.1f → %s",
+                    "Blended risk score persisted: %.1f → %s",
                     blended_risk_score, blended_risk_level,
                 )
             else:

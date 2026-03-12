@@ -54,6 +54,11 @@ class ReleaseResponse(ReleaseBase):
     repo_id: str
     risk_score: float
     risk_level: str
+    critical_vulns: int = 0
+    high_vulns: int = 0
+    medium_vulns: int = 0
+    low_vulns: int = 0
+    unknown_vulns: int = 0
     
     class Config:
         from_attributes = True

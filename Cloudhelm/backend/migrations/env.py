@@ -24,6 +24,7 @@ from backend.models.cost import CloudCost, CostAggregate, Budget, CostAnomaly, I
 from backend.models.release import Repository, Release, ReleaseAnomaly, ReleaseIncident
 from backend.models.resource import Resource, ResourceMetric, Recommendation
 from backend.models.health import Service, ServiceMetric, MetricsAnomaly, ContainerMetric, PodMetric
+from backend.models.efficiency import ResourceEfficiency
 
 # this is the Alembic Config object
 config = context.config

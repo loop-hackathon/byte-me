@@ -151,6 +151,46 @@ class GitHubService:
             logger.error(f"Error fetching releases for {owner}/{repo}: {e}")
             return []
     
+    def get_commits(self, owner: str, repo: str, branch: Optional[str] = None, limit: int = 50) -> List[Dict]:
+        """
+        Get commits from GitHub to treat them as releases/versions
+        """
+        try:
+            repo_obj = self.client.get_repo(f"{owner}/{repo}")
+            
+            if not branch:
+                branch = repo_obj.default_branch
+            
+            commits = repo_obj.get_commits(sha=branch)
+            
+            release_list = []
+            count = 0
+            
+            for commit in commits:
+                if count >= limit:
+                    break
+                
+                # Treat each commit as a version
+                release_data = {
+                    "service": repo,
+                    "version": commit.sha[:7], # Use short SHA as version
+                    "commit": commit.sha,
+                    "branch": branch,
+                    "deployed_at": commit.commit.author.date,
+                    "status": "success", # Assume success since it's a merged commit
+                    "triggered_by": commit.author.login if commit.author else commit.commit.author.name,
+                }
+                
+                release_list.append(release_data)
+                count += 1
+                
+            logger.info(f"Found {len(release_list)} commits for {owner}/{repo}")
+            return release_list
+            
+        except GithubException as e:
+            logger.error(f"Error fetching commits for {owner}/{repo}: {e}")
+            return []
+
     def _extract_version(self, run) -> str:
         """Extract version from workflow run"""
         # Try to extract version from tag or branch name

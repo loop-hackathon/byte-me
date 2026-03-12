@@ -1,0 +1,81 @@
+version: '3.8'
+
+# ======================================================================
+# CloudHelm Observability Stack
+# ======================================================================
+# Runs the distributed tracing infrastructure SEPARATELY from the main
+# docker-compose.yml so you can start it independently without affecting
+# the database or application containers.
+#
+# Start:  docker compose -f docker-compose.observability.yml up -d
+# Stop:   docker compose -f docker-compose.observability.yml down
+#
+# After starting, open:
+#   Grafana  →  http://localhost:3002  (admin / admin)
+#   Tempo    →  http://localhost:3200
+# ======================================================================
+
+services:
+
+  # ── OpenTelemetry Collector ──────────────────────────────────────────
+  # Acts as the central hub that receives traces from both the FastAPI
+  # backend and the React frontend, then forwards them to Tempo.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.91.0
+    container_name: cloudhelm-otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4318:4318"   # OTLP HTTP receiver  (used by backend + frontend)
+      - "4317:4317"   # OTLP gRPC receiver  (optional)
+      - "8888:8888"   # Prometheus metrics about the collector itself
+    networks:
+      - observability
+    restart: unless-stopped
+
+  # ── Grafana Tempo ────────────────────────────────────────────────────
+  # Stores traces and lets Grafana query them.
+  tempo:
+    image: grafana/tempo:2.3.1
+    container_name: cloudhelm-tempo
+    command: ["-config.file=/etc/tempo-config.yml"]
+    volumes:
+      - ./tempo-config.yml:/etc/tempo-config.yml:ro
+      - tempo_data:/var/tempo
+    ports:
+      - "3200:3200"   # Tempo HTTP API (queried by Grafana)
+      - "4319:4317"   # Tempo gRPC OTLP ingest (used by the OTEL Collector)
+    networks:
+      - observability
+    restart: unless-stopped
+
+  # ── Grafana ──────────────────────────────────────────────────────────
+  # Visualisation layer. Tempo data source is pre-configured via the
+  # provisioning file so no manual setup is needed — just open the UI.
+  tracing-grafana:
+    image: grafana/grafana:10.2.3
+    container_name: cloudhelm-tracing-grafana
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin   # Skip login in dev
+      - GF_AUTH_DISABLE_LOGIN_FORM=false
+      - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor
+    volumes:
+      - tracing_grafana_data:/var/lib/grafana
+      - ./grafana/tracing_provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3002:3000"   # Grafana UI (3002 to avoid conflict with monitoring stack)
+    depends_on:
+      - tempo
+    networks:
+      - observability
+    restart: unless-stopped
+
+volumes:
+  tempo_data:
+  tracing_grafana_data:
+
+networks:
+  observability:
+    driver: bridge

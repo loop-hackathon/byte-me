@@ -1,0 +1,58 @@
+# ======================================================================
+# OpenTelemetry Collector Configuration
+# ======================================================================
+# Receives traces from CloudHelm services via OTLP/HTTP on port 4318
+# and forwards them to Grafana Tempo.
+#
+# Pipeline:
+#   cloudhelm-backend  ──┐
+#                         ├──► otel-collector:4318 ──► tempo:4317
+#   cloudhelm-frontend ──┘
+# ======================================================================
+
+receivers:
+  # Accept traces from services using the OTLP protocol
+  otlp:
+    protocols:
+      # HTTP endpoint used by both backend (Python SDK) and frontend (Browser SDK)
+      http:
+        endpoint: 0.0.0.0:4318
+        cors:
+          # Allow the React frontend (running on localhost:5173) to POST traces
+          allowed_origins:
+            - "http://localhost:5173"
+            - "http://localhost:3000"
+            - "http://*"
+            - "https://*"
+      # gRPC endpoint (optional, for non-browser clients)
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  # batch groups spans together before exporting — reduces network overhead
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+
+exporters:
+  # Export to Grafana Tempo (the trace storage backend)
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true   # plain-text gRPC is fine inside Docker
+
+  # Optional: log traces to container stdout for debugging
+  logging:
+    verbosity: normal
+
+extensions:
+  # Health check endpoint for Docker readiness checks
+  health_check:
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers:  [otlp]
+      processors: [batch]
+      exporters:  [otlp/tempo, logging]

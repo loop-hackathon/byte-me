@@ -64,6 +64,14 @@ class Release(Base):
     triggered_by = Column(String, nullable=True)
     workflow_run_id = Column(String, unique=True, nullable=True)
     github_run_number = Column(Integer, nullable=True)
+    
+    # Persistent Security Metrics (Cached from Trivy)
+    critical_vulns = Column(Integer, default=0)
+    high_vulns = Column(Integer, default=0)
+    medium_vulns = Column(Integer, default=0)
+    low_vulns = Column(Integer, default=0)
+    unknown_vulns = Column(Integer, default=0)
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     

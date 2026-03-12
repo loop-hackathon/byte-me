@@ -8,7 +8,7 @@ import re
 import subprocess
 import asyncio
 import asyncio.subprocess
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, List
 import httpx
 
 from backend.core.config import settings
@@ -99,7 +99,7 @@ class MistralService:
                         return await self.ask_user_question(questions, repository_name)
             
             # Regular code analysis
-            prompt = self._build_code_analysis_prompt(
+            prompt = await self._build_code_analysis_prompt(
                 repository_name=repository_name,
                 code_snippet=code_snippet,
                 file_path=file_path,
@@ -278,6 +278,173 @@ class MistralService:
         
         return questions
     
+    async def _fetch_repo_code_context(self, repository_name: str) -> str:
+        """Fetch actual code context from the GitHub repository.
+        
+        Uses the GitHub API to get the directory tree and source code contents
+        so that Mistral has real code to analyze for personalized recommendations.
+        
+        Fetches three categories of files:
+        1. Config/metadata files (package.json, requirements.txt, etc.)
+        2. Source code files (routers, services, components, models, utils)
+        3. Test files (if they exist) for testing-related queries
+        """
+        try:
+            if '/' in repository_name:
+                owner, repo = repository_name.split('/', 1)
+            else:
+                logger.debug(f"Repository name '{repository_name}' is not in owner/repo format, skipping code fetch")
+                return ""
+            
+            token = settings.github_token or settings.github_client_secret
+            if not token:
+                logger.debug("No GitHub token available for code fetching")
+                return ""
+            
+            headers = {
+                "Authorization": f"token {token}",
+                "Accept": "application/vnd.github.v3+json"
+            }
+            
+            context_parts: List[str] = []
+            
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                # 1. Fetch the full repo tree
+                tree_resp = await client.get(
+                    f"https://api.github.com/repos/{owner}/{repo}/git/trees/HEAD?recursive=1",
+                    headers=headers
+                )
+                
+                if tree_resp.status_code != 200:
+                    logger.debug(f"Could not fetch repo tree: {tree_resp.status_code}")
+                    return ""
+                
+                tree_data = tree_resp.json()
+                all_items = tree_data.get("tree", [])
+                paths = [item["path"] for item in all_items if item["type"] == "blob"]
+                
+                # Show full directory structure (cap at 120 entries)
+                display_paths = paths[:120]
+                context_parts.append("## Repository File Structure")
+                context_parts.append("```")
+                context_parts.append("\n".join(display_paths))
+                if len(paths) > 120:
+                    context_parts.append(f"... and {len(paths) - 120} more files")
+                context_parts.append("```\n")
+                
+                # 2. Categorize files intelligently
+                # Source code extensions we care about
+                code_extensions = {'.py', '.ts', '.tsx', '.js', '.jsx', '.go', '.rs', '.java'}
+                
+                config_files: List[str] = []   # package.json, requirements.txt, etc.
+                source_files: List[str] = []   # actual code files
+                test_files: List[str] = []     # test files
+                
+                # Config/metadata file names
+                config_names = {
+                    "package.json", "requirements.txt", "pyproject.toml",
+                    "tsconfig.json", "vite.config.ts", "vite.config.js",
+                    "next.config.js", "next.config.ts", "setup.py", "setup.cfg",
+                    "Dockerfile", "docker-compose.yml", "docker-compose.yaml",
+                    ".env.example", "Makefile", "Cargo.toml", "go.mod",
+                }
+                
+                # Source code directory patterns (prioritized)
+                source_dir_patterns = [
+                    "routers/", "routes/", "api/",
+                    "services/", "service/",
+                    "models/", "schemas/",
+                    "components/", "pages/", "views/",
+                    "utils/", "helpers/", "lib/",
+                    "core/", "config/",
+                    "middleware/", "hooks/",
+                ]
+                
+                # Entry point names
+                entry_names = {
+                    "main.py", "app.py", "server.py", "manage.py",
+                    "index.ts", "index.js", "main.ts", "main.js",
+                    "App.tsx", "App.jsx", "App.ts", "App.js",
+                }
+                
+                for p in paths:
+                    basename = p.split("/")[-1]
+                    ext = '.' + basename.rsplit('.', 1)[-1] if '.' in basename else ''
+                    lower_path = p.lower()
+                    
+                    # Config files
+                    if basename in config_names:
+                        config_files.append(p)
+                        continue
+                    
+                    # Test files
+                    if ('test' in lower_path or 'spec' in lower_path or '__tests__' in lower_path) and ext in code_extensions:
+                        test_files.append(p)
+                        continue
+                    
+                    # Entry point files
+                    if basename in entry_names:
+                        source_files.insert(0, p)  # Prioritize entry points
+                        continue
+                    
+                    # Source code in key directories
+                    if ext in code_extensions:
+                        is_in_source_dir = any(pat in p for pat in source_dir_patterns)
+                        if is_in_source_dir:
+                            source_files.append(p)
+                
+                # Build the fetch list: config (3) + source (6) + test (1) = up to 10 files
+                files_to_fetch: List[str] = []
+                files_to_fetch.extend(config_files[:3])   # key config files
+                files_to_fetch.extend(source_files[:6])   # actual source code
+                files_to_fetch.extend(test_files[:1])     # a test file for context
+                
+                # Deduplicate while preserving order
+                seen = set()
+                unique_files: List[str] = []
+                for f in files_to_fetch:
+                    if f not in seen:
+                        seen.add(f)
+                        unique_files.append(f)
+                files_to_fetch = unique_files[:10]
+                
+                total_chars = 0
+                max_total_chars = 8000  # More generous budget for real code
+                
+                for file_path in files_to_fetch:
+                    if total_chars >= max_total_chars:
+                        break
+                    try:
+                        file_resp = await client.get(
+                            f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}",
+                            headers={**headers, "Accept": "application/vnd.github.v3.raw"}
+                        )
+                        if file_resp.status_code == 200:
+                            content = file_resp.text
+                            # Cap each file at 1200 chars for meaningful context
+                            if len(content) > 1200:
+                                content = content[:1200] + "\n... (truncated)"
+                            
+                            # Detect file type for language hint
+                            lang = ""
+                            if file_path.endswith('.py'): lang = "python"
+                            elif file_path.endswith(('.ts', '.tsx')): lang = "typescript"
+                            elif file_path.endswith(('.js', '.jsx')): lang = "javascript"
+                            elif file_path.endswith('.json'): lang = "json"
+                            elif file_path.endswith('.yml') or file_path.endswith('.yaml'): lang = "yaml"
+                            
+                            context_parts.append(f"## File: `{file_path}`\n```{lang}\n{content}\n```\n")
+                            total_chars += len(content)
+                    except Exception as e:
+                        logger.debug(f"Could not fetch file {file_path}: {e}")
+                        continue
+            
+            return "\n".join(context_parts)
+            
+        except Exception as e:
+            logger.warning(f"Error fetching repo code context: {e}")
+            return ""
+
     async def _call_mistral_api(self, prompt: str) -> Optional[str]:
         """Call Mistral AI API with the given prompt"""
         try:
@@ -291,31 +458,37 @@ class MistralService:
                 "messages": [
                     {
                         "role": "system",
-                        "content": """You are a senior software engineer and DevOps assistant operating inside a developer CLI.
+                        "content": """You are a senior software engineer and DevOps assistant embedded in a cloud management dashboard.
 
 Act like:
 - Senior backend engineer
 - DevOps engineer
 - Code reviewer
 
-Response rules:
-- Output must be CLI friendly
-- Do NOT use markdown styling like ** or headings
-- Keep answers structured and minimal
-- Prefer bullet lists or sections
-- Suggest real commands when useful
-- Be concise and professional
+Critical rules:
+- You will receive ACTUAL source code from the user's repository. You MUST read it carefully and base ALL your responses on it.
+- NEVER give generic advice. Always reference specific file names, function names, classes, and packages from the provided code.
+- If code context is provided, analyze the real code — identify actual bugs, missing error handling, unused imports, security issues, etc.
+- When suggesting commands, use the EXACT tools the project uses (check package.json scripts, requirements.txt packages, Makefile targets, etc.)
+- When suggesting tests, reference the actual functions and modules in the codebase
 
-If a user command fails, output:
+Formatting rules:
+- Use markdown formatting: **bold** for emphasis, `code` for inline code, ```code blocks``` for commands
+- Use ## headings to organize sections
+- Use bullet lists (- item) for lists
 
-ERROR
+If a user command fails, format your response as:
+
+## Error
 Cause of failure
 
-FIX
+## Fix
 How to resolve it
 
-COMMAND
+## Command
+```
 Correct command
+```
 """
                     },
                     {
@@ -324,7 +497,7 @@ Correct command
                     }
                 ],
                 "temperature": 0.2,
-                "max_tokens": 1000
+                "max_tokens": 2000
             }
             
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -358,7 +531,7 @@ Correct command
             logger.error(f"Error calling Mistral API: {e}")
             return None
     
-    def _build_code_analysis_prompt(
+    async def _build_code_analysis_prompt(
         self,
         repository_name: str,
         code_snippet: Optional[str],
@@ -366,64 +539,57 @@ Correct command
         question: Optional[str]
     ) -> str:
         """
-        Build optimized prompt for CLI style code analysis
+        Build prompt for code analysis with actual repo context from GitHub.
         """
+        # Fetch actual repo code context from GitHub
+        repo_context = await self._fetch_repo_code_context(repository_name)
 
-        context = f"""
-You are a senior software engineer and DevOps assistant operating inside a developer CLI.
+        context = f"""**Repository:** {repository_name}
+**File:** {file_path if file_path else "not specified"}
 
-Repository: {repository_name}
-File: {file_path if file_path else "unknown"}
+IMPORTANT: You MUST base your entire analysis on the actual repository code provided below. Do NOT give generic advice.
 
 Your job:
-- Analyze code
-- Detect errors
-- Suggest fixes
-- Recommend commands developers should run
+- Study the actual source code files provided in the "Repository Code Context" section below
+- Reference specific file names, function names, class names, and dependencies you find in the code
+- Identify real issues in the actual code (not hypothetical ones)
+- Suggest specific fixes with exact file paths and line-level changes
+- Recommend commands that match the project's actual tech stack (e.g. if you see `package.json` with vitest, suggest `npx vitest`; if you see `requirements.txt` with pytest, suggest `pytest`)
+- If you see existing tests, reference them; if none exist, suggest where to add them based on the actual project structure
 
-Response rules:
-- Output must be CLI friendly
-- Do NOT use markdown styling like ** or headings
-- Keep answers structured and minimal
-- Prefer bullet lists or sections
-- Suggest real commands when useful
-- Be concise and professional
+Respond using markdown: **bold**, `inline code`, ```code blocks```, ## headings, and - bullet lists.
 
-Response format:
+Structure your response as:
 
-SUMMARY
-Short explanation of the issue or request
+## Summary
+Brief overview referencing the actual tech stack and project structure
 
-ANALYSIS
-Key findings in the code
+## Code Analysis
+Findings from reviewing the actual source files — reference specific file names and code patterns
 
-POSSIBLE ISSUES
-- issue 1
-- issue 2
+## Issues Found
+- Reference the exact file and describe the issue
 
-RECOMMENDED FIX
-Step by step technical fix
+## Recommended Fix
+Step-by-step fix with exact file paths and code snippets from the project
 
-CLI COMMANDS
-Commands the developer can run locally if applicable
+## Commands to Run
+```
+Exact commands based on the project's actual package manager, test runner, and tooling
+```
 
-NEXT STEPS
-What the developer should do next
+## Next Steps
+Specific next actions referencing the project's actual components
 """
+
+        if repo_context:
+            context += f"""\n---\n\n# Repository Code Context\n\nThe following is the ACTUAL code from the repository. Base ALL your answers on this code.\n\n{repo_context}\n"""
 
         if code_snippet:
-            context += f"""
-
-CODE
-{code_snippet}
-"""
+            context += f"""\n## Code Under Review\n```\n{code_snippet}\n```\n"""
 
         if question:
-            context += f"""
-
-USER REQUEST
-{question}
-"""
+            context += f"""\n## User Question\n{question}\n"""
 
         return context
     

@@ -26,6 +26,11 @@ export interface Release {
   risk_level: RiskLevel;
   deployment_duration?: number;
   triggered_by?: string;
+  critical_vulns?: number;
+  high_vulns?: number;
+  medium_vulns?: number;
+  low_vulns?: number;
+  unknown_vulns?: number;
 }
 
 export interface Anomaly {

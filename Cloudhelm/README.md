@@ -250,15 +250,22 @@ Frontend will run on: http://localhost:5173
 
 ### Using Docker
 
+Start the CloudHelm platform with all observability and monitoring features fully enabled:
+
 ```bash
-# Build and start all services
-docker-compose up --build
+# 1. Start the main application + Monitoring Stack (Prometheus, Grafana, Demo Apps)
+docker compose -f docker-compose.monitoring.yml up --build -d
 
-# Run in background
-docker-compose up -d
+# 2. Start the Tracing & Observability Stack (OpenTelemetry, Tempo, Tracing UI)
+docker compose -f docker-compose.observability.yml up -d
+```
 
-# Stop services
-docker-compose down
+*(Note: `docker-compose.monitoring.yml` already includes the backend, frontend, and database, so you don't need to run the standard `docker-compose up` command separately).*
+
+To stop all services:
+```bash
+docker compose -f docker-compose.observability.yml down
+docker compose -f docker-compose.monitoring.yml down
 ```
 
 ---

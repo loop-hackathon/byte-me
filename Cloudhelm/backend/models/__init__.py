@@ -4,6 +4,7 @@ from backend.models.cost import CloudCost, CostAggregate, Budget, CostAnomaly, I
 from backend.models.release import Repository, Release, ReleaseAnomaly, ReleaseIncident
 from backend.models.resource import Resource, ResourceMetric, Recommendation
 from backend.models.health import ServiceMetric, MetricsAnomaly, Service, ContainerMetric, PodMetric
+from backend.models.efficiency import ResourceEfficiency
 
 __all__ = [
     "User",
@@ -25,4 +26,5 @@ __all__ = [
     "Service",
     "ContainerMetric",
     "PodMetric",
+    "ResourceEfficiency",
 ]

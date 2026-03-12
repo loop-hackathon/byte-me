@@ -262,8 +262,14 @@ def sync_repository_releases(
         from backend.services.github_service import GitHubService
         github_service = GitHubService(token)
         
-        # Try to get workflow runs first (most common for CI/CD)
-        releases = github_service.get_workflow_runs(owner, repo_name, limit=50)
+        # Try to get commits first (user requested "as much as commits that much of versions")
+        logger.info(f"Fetching commits for {repo.full_name} to treat as versions")
+        releases = github_service.get_commits(owner, repo_name, limit=50)
+        
+        # If no commits, try workflow runs
+        if not releases:
+            logger.info(f"No commits found (unexpected), trying workflow runs for {repo.full_name}")
+            releases = github_service.get_workflow_runs(owner, repo_name, limit=50)
         
         # If no workflow runs, try release tags
         if not releases:

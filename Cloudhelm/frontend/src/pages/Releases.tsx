@@ -1,4 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { 
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, Legend
+} from 'recharts';
 import type { Repository, Release, Vulnerability } from '../types/release';
 import { api } from '../lib/api';
 import CloudHelmAssistant from '../components/CloudHelmAssistant';
@@ -169,6 +173,7 @@ const VulnerabilityItem: React.FC<{
 
 export default function Releases() {
   const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
+  const [selectedReleaseId, setSelectedReleaseId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [releases, setReleases] = useState<Release[]>([]);
@@ -180,6 +185,18 @@ export default function Releases() {
   const [vulnFilter, setVulnFilter] = useState<string>('ALL');
   const [expandedVuln, setExpandedVuln] = useState<string | null>(null);
   const [showSBOM, setShowSBOM] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const selectedRelease = useMemo(() => 
+    releases.find(r => r.id === selectedReleaseId) || releases[0],
+    [selectedReleaseId, releases]
+  );
+
+  const previousRelease = useMemo(() => {
+    if (!selectedReleaseId) return null;
+    const index = releases.findIndex(r => r.id === selectedReleaseId);
+    return index < releases.length - 1 ? releases[index + 1] : null;
+  }, [selectedReleaseId, releases]);
 
   // Memoized stats calculation
   const stats = useMemo(() => ({
@@ -188,7 +205,23 @@ export default function Releases() {
     healthy: releases.filter(r => r.risk_level === 'Healthy').length,
     suspect: releases.filter(r => r.risk_level === 'Suspect').length,
     risky: releases.filter(r => r.risk_level === 'Risky').length,
+    scanned: releases.filter(r => (r.critical_vulns || 0) + (r.high_vulns || 0) + (r.medium_vulns || 0) + (r.low_vulns || 0) > 0).length,
   }), [releases]);
+
+  const securityTrendData = useMemo(() => {
+    return [...releases]
+      .reverse()
+      .filter(r => (r.critical_vulns || 0) + (r.high_vulns || 0) + (r.medium_vulns || 0) + (r.low_vulns || 0) > 0)
+      .slice(-10)
+      .map(r => ({
+        name: `v${r.version}`,
+        critical: r.critical_vulns || 0,
+        high: r.high_vulns || 0,
+        medium: r.medium_vulns || 0,
+        low: r.low_vulns || 0,
+        risk: r.risk_score
+      }));
+  }, [releases]);
 
   const currentRepo = useMemo(() => 
     selectedRepo ? repositories.find(r => r.id === selectedRepo) : null,
@@ -286,6 +319,7 @@ export default function Releases() {
         setSecurityScan(null);
         setExpandedVuln(null);
         setVulnFilter('ALL');
+        setSelectedReleaseId(null);
         
         // Load releases first to get the latest commit for security scan
         await loadReleases(selectedRepo);
@@ -295,12 +329,20 @@ export default function Releases() {
         const repoReleases = await api.getRepositoryReleases(selectedRepo);
         const latestCommit = repoReleases.length > 0 ? repoReleases[0].commit : undefined;
         
-        runSecurityScan(selectedRepo, latestCommit);
+        if (latestCommit) {
+           runSecurityScan(selectedRepo, latestCommit);
+        }
       }
     };
     
     initRepoView();
   }, [selectedRepo, loadReleases, runSecurityScan]);
+
+  const handleReleaseClick = useCallback((release: Release) => {
+    setSelectedReleaseId(release.id);
+    setSecurityScan(null);
+    runSecurityScan(selectedRepo!, release.commit);
+  }, [selectedRepo, runSecurityScan]);
 
   const handleSyncRepositories = useCallback(async () => {
     try {
@@ -522,18 +564,53 @@ export default function Releases() {
             </p>
           </div>
           <div className="bg-slate-900/60 backdrop-blur-lg border border-slate-700 rounded-xl p-6">
-            <p className="text-sm text-slate-400 mb-1">Scan Status</p>
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${
-                scanning ? 'bg-blue-400 animate-pulse' :
-                securityScan ? 'bg-green-400' : 'bg-slate-600'
-              }`} />
-              <p className="text-lg font-bold text-white">
-                {scanning ? 'Running...' : securityScan ? 'Completed' : 'Not Scanned'}
-              </p>
-            </div>
+            <p className="text-sm text-slate-400 mb-1">Scanned Versions</p>
+            <p className="text-3xl font-bold text-cyan-400">
+              {stats.scanned} <span className="text-sm font-normal text-slate-500">/ {stats.total}</span>
+            </p>
           </div>
         </div>
+
+        {/* Security Trend Chart */}
+        {securityTrendData.length > 0 && (
+          <div className="mb-8 bg-slate-900/60 backdrop-blur-lg border border-slate-700 rounded-xl p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <svg className="w-5 h-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+                </svg>
+                Security Posture History
+              </h2>
+              <div className="flex gap-4 text-xs">
+                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"/> Critical</div>
+                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"/> High</div>
+                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"/> Medium</div>
+              </div>
+            </div>
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={securityTrendData}>
+                  <defs>
+                    <linearGradient id="colorCritical" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                  <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px' }}
+                    itemStyle={{ fontSize: '12px' }}
+                  />
+                  <Area type="monotone" dataKey="critical" stroke="#ef4444" fillOpacity={1} fill="url(#colorCritical)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="high" stroke="#f97316" fill="transparent" strokeWidth={2} />
+                  <Area type="monotone" dataKey="medium" stroke="#eab308" fill="transparent" strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
 
         {/* Security Scan Results */}
         {securityScan && (
@@ -543,15 +620,37 @@ export default function Releases() {
                 <svg className="w-6 h-6 mr-2 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.040L3 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622l-0.382-3.016z" />
                 </svg>
-                Vulnerability Scan Results
+                Vulnerability Scan Results {selectedRelease && `(v${selectedRelease.version})`}
               </h3>
-              <button 
-                onClick={() => setShowSBOM(true)}
-                className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors"
-              >
-                Generate SBOM Output
-              </button>
+              <div className="flex gap-2">
+                {previousRelease && (
+                  <div className="flex items-center gap-1 text-[10px] uppercase font-bold text-slate-500 mr-2 bg-slate-800/50 px-2 py-1 rounded">
+                    Comparing v{selectedRelease?.version} ↔ v{previousRelease.version}
+                  </div>
+                )}
+                <button 
+                  onClick={() => setShowSBOM(true)}
+                  className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors"
+                >
+                  Generate SBOM Output
+                </button>
+              </div>
             </div>
+
+            {previousRelease && (previousRelease.critical_vulns || 0) > 0 && (
+              <div className="mb-6 p-3 rounded-lg bg-blue-500/5 border border-blue-500/10 flex items-center justify-between">
+                <div className="text-sm text-slate-300">
+                  <span className="font-bold text-blue-400">Progression Analysis:</span>{' '}
+                  { (selectedRelease?.critical_vulns || 0) < (previousRelease.critical_vulns || 0) ? (
+                    <span className="text-green-400">Security Improved! { (previousRelease.critical_vulns || 0) - (selectedRelease?.critical_vulns || 0) } critical vulnerabilities fixed since v{previousRelease.version}.</span>
+                  ) : (selectedRelease?.critical_vulns || 0) > (previousRelease.critical_vulns || 0) ? (
+                    <span className="text-red-400">Security Warning: { (selectedRelease?.critical_vulns || 0) - (previousRelease.critical_vulns || 0) } new critical vulnerabilities introduced since v{previousRelease.version}.</span>
+                  ) : (
+                    <span>Stability maintained: Critical vulnerability count unchanged since v{previousRelease.version}.</span>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Severity Tabs */}
             <div className="flex border-b border-slate-800 mb-6">
@@ -607,17 +706,17 @@ export default function Releases() {
                 <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Scan based on latest release version (v{releases[0]?.version || 'latest'})
+                Scan based on version v{selectedRelease?.version || 'latest'} ({truncate(selectedRelease?.commit || '', 8)})
               </div>
               <button 
-                onClick={() => runSecurityScan(selectedRepo!)}
+                onClick={() => runSecurityScan(selectedRepo!, selectedRelease?.commit)}
                 disabled={scanning}
                 className="text-cyan-400 hover:text-cyan-300 text-xs font-bold uppercase tracking-widest flex items-center transition-colors"
               >
                 <svg className={`w-3 h-3 mr-1 ${scanning ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                Rescan Repository
+                Rescan This Version
               </button>
             </div>
           </div>
@@ -661,7 +760,7 @@ export default function Releases() {
 
         {/* Releases List */}
         <div>
-          <h2 className="text-2xl font-bold text-white mb-4">Recent Releases ({releases.length})</h2>
+          <h2 className="text-2xl font-bold text-white mb-4">Recent Releases / Commits ({releases.length})</h2>
           
           {error && (
             <div className="mb-6 bg-red-500/10 border border-red-500/30 rounded-lg p-4">
@@ -682,12 +781,31 @@ export default function Releases() {
               {releases.map((release) => (
                 <div
                   key={release.id}
-                  className="bg-slate-900/60 backdrop-blur-lg border border-slate-700 rounded-xl p-6 hover:border-cyan-400/50 transition-all"
+                  onClick={() => handleReleaseClick(release)}
+                  className={`bg-slate-900/60 backdrop-blur-lg border rounded-xl p-6 cursor-pointer transition-all ${
+                    selectedRelease?.id === release.id ? 'border-cyan-400 ring-1 ring-cyan-400/50' : 'border-slate-700 hover:border-cyan-400/50'
+                  }`}
                 >
                   <div className="flex justify-between items-start mb-3">
                     <div>
                       <h3 className="text-lg font-bold text-white">v{release.version}</h3>
                       <p className="text-sm text-slate-500 font-mono">{truncate(release.commit, 8)}</p>
+                      
+                      {/* Vulnerability Badges */}
+                      {(release.critical_vulns || 0) + (release.high_vulns || 0) > 0 && (
+                        <div className="flex gap-2 mt-2">
+                          {release.critical_vulns! > 0 && (
+                            <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-500 text-[10px] font-bold border border-red-500/30">
+                              {release.critical_vulns}C
+                            </span>
+                          )}
+                          {release.high_vulns! > 0 && (
+                            <span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-500 text-[10px] font-bold border border-orange-500/30">
+                              {release.high_vulns}H
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div className="flex gap-2 flex-col items-end">
                       <RiskBadge level={release.risk_level} size="sm" />
@@ -741,7 +859,10 @@ export default function Releases() {
               {releases.map((release) => (
                 <div
                   key={release.id}
-                  className="bg-slate-900/60 backdrop-blur-lg border border-slate-700 rounded-xl p-6 hover:border-cyan-400/50 transition-all"
+                  onClick={() => handleReleaseClick(release)}
+                  className={`bg-slate-900/60 backdrop-blur-lg border rounded-xl p-6 cursor-pointer transition-all ${
+                    selectedRelease?.id === release.id ? 'border-cyan-400 ring-1 ring-cyan-400/50' : 'border-slate-700 hover:border-cyan-400/50'
+                  }`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-6 flex-1">

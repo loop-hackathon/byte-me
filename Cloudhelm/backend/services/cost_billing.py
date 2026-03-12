@@ -11,6 +11,7 @@ import pandas as pd
 import httpx
 from datetime import datetime, timedelta, date
 from typing import Dict, Any, List, Optional
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger("CostBilling")
 
@@ -293,3 +294,22 @@ class BillingService:
             "anomalies": anomalies,
             "budgets": budgets,
         }
+
+    @staticmethod
+    def get_cost_by_service(db: Session, user_id: int):
+        """Get aggregate cost by service from database."""
+        from backend.models.cost import CostAggregate
+        from sqlalchemy import func
+        
+        results = db.query(
+            CostAggregate.service,
+            func.sum(CostAggregate.total_cost).label('amount')
+        ).filter(
+            CostAggregate.user_id == user_id
+        ).group_by(
+            CostAggregate.service
+        ).all()
+        
+        return results
+
+cost_billing_service = BillingService()

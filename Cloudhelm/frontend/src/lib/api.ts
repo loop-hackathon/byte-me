@@ -595,6 +595,45 @@ class ApiClient {
     return this.handleResponse(response);
   }
 
+  // Resource Efficiency Analysis
+  async uploadGrafanaCsv(file: File): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const token = localStorage.getItem('access_token');
+    const headers: HeadersInit = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const response = await fetch(`${API_BASE_URL}/efficiency/upload-grafana`, {
+      method: 'POST',
+      headers,
+      body: formData,
+      credentials: 'include',
+    });
+    return this.handleResponse(response);
+  }
+
+  async uploadGeminiCsv(file: File): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const token = localStorage.getItem('access_token');
+    const headers: HeadersInit = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const response = await fetch(`${API_BASE_URL}/efficiency/upload-gemini`, {
+      method: 'POST',
+      headers,
+      body: formData,
+      credentials: 'include',
+    });
+    return this.handleResponse(response);
+  }
+
+  async getEfficiencyAnalysis(): Promise<any> {
+    const response = await fetch(`${API_BASE_URL}/efficiency/resources`, {
+      headers: this.getHeaders(),
+      credentials: 'include',
+    });
+    return this.handleResponse(response);
+  }
+
   // Health Monitoring endpoints
   async getHealthSummary(service?: string): Promise<ServiceHealth[]> {
     const queryParams = new URLSearchParams();
@@ -1016,7 +1055,39 @@ class ApiClient {
     );
     return this.handleResponse(response);
   }
+
+  // Tracing (Tempo Proxy)
+  async listTraces(limit: number = 20, project?: string): Promise<any> {
+    const queryParams = new URLSearchParams();
+    queryParams.append('limit', limit.toString());
+    if (project && project.trim() !== '') {
+      queryParams.append('project', project.trim());
+    }
+
+    const response = await fetch(
+      `${API_BASE_URL}/tracing/traces?${queryParams.toString()}`,
+      {
+        method: 'GET',
+        headers: this.getHeaders(),
+        credentials: 'include',
+      }
+    );
+    return this.handleResponse(response);
+  }
+
+  async getTrace(traceId: string): Promise<any> {
+    const response = await fetch(
+      `${API_BASE_URL}/tracing/traces/${traceId}`,
+      {
+        method: 'GET',
+        headers: this.getHeaders(),
+        credentials: 'include',
+      }
+    );
+    return this.handleResponse(response);
+  }
 }
 
 export const api = new ApiClient();
+
 
